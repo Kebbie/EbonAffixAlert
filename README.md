@@ -1,10 +1,10 @@
-# Ebon Affix Alert (EAA)
+# Ebon Affix Alert (**EAA**)
 
 > A World of Warcraft 3.3.5a addon for Project Ebonhold that watches newly acquired gear for selected Ebonhold affixes and alerts you when something you care about drops.
 
 **Ebon Affix Alert** a addon for **Project Ebonhold** that watches newly acquired gear for selected Ebonhold affixes and alerts you when something you care about drops.
 
-EAA is designed to make affix farming easier without requiring you to inspect every item manually - You choose the General affix ranks and Weapon affixes you want to track.
+**EAA** is designed to make affix farming easier without requiring you to inspect every item manually - You choose the General affix ranks and Weapon affixes you want to track.
 
 <p align="center">
   <img src="Media/EAA_Main_UI.png" alt="Ebon Affix Alert modern interface showing General affix tracking" width="100%">
@@ -42,11 +42,11 @@ World of Warcraft\Interface\AddOns
 ## Quick Start
 
 1. Type `/eaa`
-2. On the General page, tick the ranks you want EAA to watch
+2. On the General page, tick the ranks you want **EAA** to watch
 3. On the Weapon page, tick the Weapon affixes you want to watch
 4. Leave **“Enable loot tracking”** enabled
 5. Optionally enable/disable the large on-screen alert, alert sound, minimap icon and **Loot History**
-6. Loot gear normally. EAA will alert only when a newly acquired item matches one of your tracked selections
+6. Loot gear normally. **EAA** will alert only when a newly acquired item matches one of your tracked selections
 
 ## Features
 
@@ -62,7 +62,7 @@ World of Warcraft\Interface\AddOns
 
 ### Loot detection
 
-EAA will detect when you loot an item with a tracked affix and alert you. Several safeguarding measure have been implemented to prevent false alerts.
+**EAA** will detect when you loot an item with a tracked affix and alert you. Several safeguarding measure have been implemented to prevent false alerts.
 
 ### Alerts
 
@@ -74,7 +74,7 @@ EAA will detect when you loot an item with a tracked affix and alert you. Severa
 
 ### Project Ebonhold integration
 
-Where available, EAA uses **Project Ebonhold**'s ExtractionService.learnedAffixes data to obtain:
+Where available, **EAA** uses **Project Ebonhold**'s ExtractionService.learnedAffixes data to obtain:
 
 - canonical affix names
 - affix spell IDs
@@ -92,7 +92,7 @@ Hovering over affixes in the settings window shows the spell tooltip.
 
 ### Loot History
 
-**Loot History** is an optional, movable and resizable window containing only items that actually triggered an EAA alert.
+**Loot History** is an optional, movable and resizable window containing only items that actually triggered an **EAA** alert.
 
 - Session-only by design; history is not permanently stored between logins
 - Stores up to 50 entries
@@ -106,7 +106,7 @@ Hovering over affixes in the settings window shows the spell tooltip.
 
 ### UI styles
 
-EAA includes two UI styles selectable from the top-left of the main window:
+**EAA** includes two UI styles selectable from the top-left of the main window:
 
 #### Modern
 
@@ -120,14 +120,14 @@ The selected style is saved.
 
 ### Minimap button
 
-The minimap icon provides quick access to EAA:
+The minimap icon provides quick access to **EAA**:
 
-- Left-click: open/close EAA settings
+- Left-click: open/close **EAA** settings
 - Right-click: toggle loot tracking
 - Ctrl + left-drag: move the minimap icon
 - Shift + left-click: hide the minimap icon
 
-The minimap tooltip also shows the current **Loot History** count. The icon can be restored from the main EAA settings window.
+The minimap tooltip also shows the current **Loot History** count. The icon can be restored from the main **EAA** settings window.
 
 ### Interface Options integration
 
@@ -150,13 +150,13 @@ This page provides:
 
 ### Bug Report
 
-**“Bug Report”** opens a selectable report containing useful troubleshooting information, including client/build information, EAA state, **Project Ebonhold**/ExtractionService state, cache/runtime counts, loaded addons and your tracked configuration.
+**“Bug Report”** opens a selectable report containing useful troubleshooting information, including client/build information, **EAA** state, **Project Ebonhold**/ExtractionService state, cache/runtime counts, loaded addons and your tracked configuration.
 
 Use Ctrl+A then Ctrl+C to copy the report.
 
 ### Performance monitor
 
-`/eaa perf` toggles a periodic EAA performance report in chat. It reports EAA memory usage and cache/runtime sizes using WoW's exposed addon APIs.
+`/eaa perf` toggles a periodic **EAA** performance report in chat. It reports **EAA** memory usage and cache/runtime sizes using WoW's exposed addon APIs.
 
 CPU usage is available only when WoW's script profiling is enabled. To enable it:
 
@@ -194,17 +194,17 @@ World of Warcraft\Logs\taint.log
 
 ### Icon rescan
 
-`/eaa rescanIcons` asks **Project Ebonhold** for the current learned-affix catalogue again and refreshes EAA's affix/icon cache.
+`/eaa rescanIcons` asks **Project Ebonhold** for the current learned-affix catalogue again and refreshes **EAA**'s affix/icon cache.
 
 ### Clear cache
 
-`/eaa clearCache` clears EAA's disposable runtime/persisted icon data and the short-lived duplicate-alert cache, then automatically requests a fresh Ebonhold icon scan.
+`/eaa clearCache` clears **EAA**'s disposable runtime/persisted icon data and the short-lived duplicate-alert cache, then automatically requests a fresh Ebonhold icon scan.
 
 It intentionally preserves tracked selections, settings, **Loot History** and the bag ownership baseline.
 
 ### Debug
 
-`/eaa debug` enables additional EAA event/loot diagnostics in chat. Leave this disabled during normal play unless troubleshooting a problem.
+`/eaa debug` enables additional **EAA** event/loot diagnostics in chat. Leave this disabled during normal play unless troubleshooting a problem.
 
 ## Troubleshooting
 
@@ -238,7 +238,7 @@ Enable:
 /eaa debug
 ```
 
-Then reproduce the issue and include the relevant EAA chat output plus a Bug Report.
+Then reproduce the issue and include the relevant **EAA** chat output plus a Bug Report.
 
 ### Lua error popup
 
@@ -272,11 +272,11 @@ This is usually a protected-action/taint issue rather than a normal Lua exceptio
 /reload
 ```
 
-Reproduce the problem, then provide `Logs\taint.log` along with an EAA Bug Report.
+Reproduce the problem, then provide `Logs\taint.log` along with an **EAA** Bug Report.
 
 ## Project / License
 
-**Ebon Affix Alert** is an independent addon intended for use with **Project Ebonhold**. **Project Ebonhold** and World of Warcraft are separate projects/products and are not distributed with EAA.
+**Ebon Affix Alert** is an independent addon intended for use with **Project Ebonhold**. **Project Ebonhold** and World of Warcraft are separate projects/products and are not distributed with **EAA**.
 
 **Ebon Affix Alert** is open source and distributed under the MIT License. See LICENSE.txt for the full license text.
 
