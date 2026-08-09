@@ -6,6 +6,12 @@
 
 EAA is designed to make affix farming easier without requiring you to inspect every item manually - You choose the General affix ranks and Weapon affixes you want to track.
 
+<p align="center">
+  <img src="Media/EAA_Main_UI.png" alt="Ebon Affix Alert modern interface showing General affix tracking" width="100%">
+</p>
+
+<p align="center"><em>Ebon Affix Alert — Modern interface</em></p>
+
 ## Contents
 
 - [Requirements](#requirements)
