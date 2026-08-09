@@ -1,0 +1,15 @@
+# Ebon Affix Alert Changelog
+
+## v1.0.0 - 2026-08-09
+
+- First public release of Ebon Affix Alert.
+- Includes General and Weapon affix tracking, server-driven rank/icon data, loot alerts, Loot History, minimap controls, diagnostics/support tools, and Modern/Fantasy UI styles.
+- Added the final styled README.html, MIT LICENSE.txt, and release documentation.
+
+# Ebon Affix Alert - Changelog
+
+Version-specific changes are recorded here. The README describes the current feature set rather than individual release history.
+
+## 1.0.0
+
+- Addon released

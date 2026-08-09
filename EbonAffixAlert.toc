@@ -1,0 +1,10 @@
+## Interface: 30300
+## Title: Ebon Affix Alert
+## Notes: Announces Project Ebonhold loot containing selected affixes.
+## Author: ChatGPT
+## Version: 1.0.0
+## SavedVariables: EbonAffixAlertDB
+## SavedVariablesPerCharacter: EbonAffixAlertCharacterDB
+
+Bootstrap.lua
+EbonAffixAlert.lua
