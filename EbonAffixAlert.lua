@@ -1,4 +1,4 @@
--- Ebon Affix Alert v1.0.0
+-- Ebon Affix Alert v1.0.1
 -- WoW 3.3.5a compatible core
 
 -- General affixes: {name, fallback max rank}. Ebonhold API overrides rank when available.
@@ -46,7 +46,7 @@ local weaponAffixes = {
     "Flame Wrath",
     "Flurry",
     "Fortification",
-    "Frality",
+    "Frailty",
     "Frost Arrow",
     "Fury",
     "Glaciation",
@@ -199,9 +199,9 @@ end
 
 local function GetEAAVersion()
     if GetAddOnMetadata then
-        return GetAddOnMetadata("EbonAffixAlert","Version") or "1.0.0"
+        return GetAddOnMetadata("EbonAffixAlert","Version") or "1.0.1"
     end
-    return "1.0.0"
+    return "1.0.1"
 end
 
 -- Three lightweight skins; the selected style is saved in EbonAffixAlertDB.
@@ -654,6 +654,56 @@ local function ApplyLootHistoryTitleStyle()
     lootWindow.title:SetTextColor(EAA_THEME.title[1],EAA_THEME.title[2],EAA_THEME.title[3])
 end
 
+local function UpdateEAASearchStyle()
+    if not panel or not panel.searchBox or not panel.searchLabel then return end
+
+    local box = panel.searchBox
+    local label = panel.searchLabel
+    local boxName = box:GetName()
+    local left = boxName and _G[boxName .. "Left"]
+    local middle = boxName and _G[boxName .. "Middle"]
+    local right = boxName and _G[boxName .. "Right"]
+
+    if EAA_THEME_NAME == "Fantasy" then
+        -- The stock InputBoxTemplate is too faint against the Fantasy panel,
+        -- so replace its visible chrome with a stronger leather-and-bronze field.
+        if left then left:Hide() end
+        if middle then middle:Hide() end
+        if right then right:Hide() end
+
+        box:SetBackdrop({
+            bgFile="Interface\\Buttons\\WHITE8X8",
+            edgeFile="Interface\\Buttons\\WHITE8X8",
+            tile=true, tileSize=16, edgeSize=2,
+            insets={left=2,right=2,top=2,bottom=2}
+        })
+        box:SetBackdropColor(0.075,0.038,0.030,1.00)
+        box:SetBackdropBorderColor(0.86,0.62,0.25,1.00)
+        box:SetTextColor(1.00,0.94,0.80)
+        box:SetHeight(24)
+        if box.SetTextInsets then box:SetTextInsets(7,7,0,0) end
+
+        -- High-contrast Fantasy label, drawn above the inset layer.
+        label:SetFont("Fonts\\FRIZQT__.TTF",15,"OUTLINE")
+        label:SetTextColor(1.00,0.95,0.68)
+        label:SetShadowColor(0,0,0,1)
+        label:SetShadowOffset(1,-1)
+    else
+        if left then left:Show() end
+        if middle then middle:Show() end
+        if right then right:Show() end
+
+        box:SetBackdrop(nil)
+        box:SetTextColor(EAA_THEME.text[1],EAA_THEME.text[2],EAA_THEME.text[3])
+        box:SetHeight(20)
+        if box.SetTextInsets then box:SetTextInsets(0,0,0,0) end
+
+        label:SetFontObject(GameFontNormalSmall)
+        label:SetTextColor(EAA_THEME.muted[1],EAA_THEME.muted[2],EAA_THEME.muted[3])
+        label:SetShadowOffset(0,0)
+    end
+end
+
 local function SetEAATheme(styleName)
     if styleName ~= "Modern" and styleName ~= "Fantasy" then styleName = "Modern" end
     EAA_THEME = EAA_THEMES[styleName]
@@ -675,6 +725,7 @@ local function SetEAATheme(styleName)
     end
 
     ApplyLootHistoryTitleStyle()
+    UpdateEAASearchStyle()
 
     if panel then
         if panel.alertsFantasyDivider then
@@ -1310,12 +1361,6 @@ ShowAffixTooltip = function(anchor,affixName,rank)
         end)
 
         if ok then
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine(
-                "EAA tracking: " .. affixName
-                .. (rank and (" " .. (roman[rank] or tostring(rank))) or ""),
-                0.35,1,0.65
-            )
             GameTooltip:Show()
             return
         end
@@ -1518,10 +1563,18 @@ local function CreatePanel()
     panel.statusDot = statusDot
 
 
-    local searchLabel = panel:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+    -- Keep the Filter label above themed inset/background frames so it cannot
+    -- be visually dimmed by the Fantasy panel treatment.
+    local searchLabelLayer = CreateFrame("Frame",nil,panel)
+    searchLabelLayer:SetAllPoints(panel)
+    searchLabelLayer:SetFrameLevel(panel:GetFrameLevel() + 20)
+    searchLabelLayer:EnableMouse(false)
+
+    local searchLabel = searchLabelLayer:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
     searchLabel:SetPoint("TOPLEFT",28,-91)
     searchLabel:SetText("Filter:")
     SetEAATextColor(searchLabel,EAA_THEME.muted)
+    panel.searchLabelLayer = searchLabelLayer
 
     local searchBox = CreateFrame("EditBox","EbonAffixAlertSearchBox",panel,"InputBoxTemplate")
     searchBox:SetWidth(210)
@@ -1541,11 +1594,13 @@ local function CreatePanel()
         self:ClearFocus()
     end)
     panel.searchBox = searchBox
+    panel.searchLabel = searchLabel
+    UpdateEAASearchStyle()
 
     local trackedOnlyCheck = CreateFrame("CheckButton",nil,panel,"UICheckButtonTemplate")
     SkinEAACheckbox(trackedOnlyCheck)
     trackedOnlyCheck:SetWidth(24); trackedOnlyCheck:SetHeight(24)
-    trackedOnlyCheck:SetPoint("LEFT",searchBox,"RIGHT",22,0)
+    trackedOnlyCheck:SetPoint("LEFT",searchBox,"RIGHT",10,0)
     local trackedText = trackedOnlyCheck:CreateFontString(nil,"OVERLAY","GameFontNormal")
     trackedText:SetPoint("LEFT",trackedOnlyCheck,"RIGHT",2,0)
     trackedText:SetText("Tracked only")
@@ -1586,12 +1641,62 @@ local function CreatePanel()
     local rank
     local rankHeaders = {}
     for rank=1,10 do
-        local h = gc:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+        local h = CreateFrame("Button",nil,gc)
         h:SetWidth(22)
-        h:SetJustifyH("CENTER")
-        h:SetPoint("TOPLEFT",colX[rank],-3)
-        h:SetText(roman[rank])
-        SetEAATextColor(h,EAA_THEME.purple)
+        h:SetHeight(20)
+        h:SetPoint("TOPLEFT",colX[rank],1)
+        h.rank = rank
+
+        local hText = h:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+        hText:SetAllPoints(h)
+        hText:SetJustifyH("CENTER")
+        hText:SetText(roman[rank])
+        SetEAATextColor(hText,EAA_THEME.purple)
+        h.text = hText
+
+        h:EnableMouse(true)
+        h:SetScript("OnEnter",function(self)
+            GameTooltip:SetOwner(self,"ANCHOR_TOP")
+            GameTooltip:ClearLines()
+            GameTooltip:AddLine("Rank " .. (roman[self.rank] or tostring(self.rank)),1,0.82,0)
+            GameTooltip:AddLine("Click to track all General affixes available at this rank.",1,1,1,true)
+            GameTooltip:AddLine("If every available affix at this rank is already tracked, clicking clears them all.",0.75,0.75,0.75,true)
+            GameTooltip:Show()
+        end)
+        h:SetScript("OnLeave",function() GameTooltip:Hide() end)
+        h:SetScript("OnClick",function(self)
+            local _, cb
+            local availableCount = 0
+            local trackedCount = 0
+
+            for _,cb in ipairs(generalChecks) do
+                if cb.affixRank == self.rank then
+                    availableCount = availableCount + 1
+                    if EbonAffixAlertDB.tracked[cb.key] then
+                        trackedCount = trackedCount + 1
+                    end
+                end
+            end
+
+            local clearRank = availableCount > 0 and trackedCount == availableCount
+
+            for _,cb in ipairs(generalChecks) do
+                if cb.affixRank == self.rank then
+                    if clearRank then
+                        EbonAffixAlertDB.tracked[cb.key] = nil
+                        cb:SetChecked(nil)
+                    else
+                        EbonAffixAlertDB.tracked[cb.key] = true
+                        cb:SetChecked(1)
+                    end
+                end
+            end
+
+            if trackedOnly and ApplyAffixFilters then
+                ApplyAffixFilters()
+            end
+        end)
+
         rankHeaders[rank] = h
         if rank > 6 then h:Hide() end
     end
@@ -1689,7 +1794,17 @@ local function CreatePanel()
         allButton:SetText("All")
         SkinEAAButton(allButton)
         allButton.rowChecks = rowChecks
+        allButton.affixName = affixName
         table.insert(rowInfo.buttons,allButton)
+        allButton:SetScript("OnEnter",function(self)
+            GameTooltip:SetOwner(self,"ANCHOR_RIGHT")
+            GameTooltip:ClearLines()
+            GameTooltip:AddLine(self.affixName .. " - All Ranks",1,0.82,0)
+            GameTooltip:AddLine("Click to track every available rank for this affix.",1,1,1,true)
+            GameTooltip:AddLine("If every rank is already tracked, clicking clears them all.",0.75,0.75,0.75,true)
+            GameTooltip:Show()
+        end)
+        allButton:SetScript("OnLeave",function() GameTooltip:Hide() end)
         allButton:SetScript("OnClick",function(self)
             local _, rowCB
             local allSelected = true
@@ -1977,8 +2092,8 @@ local function CreatePanel()
 
     local selectPage = CreateFrame("Button",nil,panel,"UIPanelButtonTemplate")
     selectPage:SetWidth(90); selectPage:SetHeight(24)
-    selectPage:SetPoint("RIGHT",clearAll,"LEFT",-8,0)
-    selectPage:SetText("Select Page")
+    selectPage:SetPoint("RIGHT",clearAll,"LEFT",0,0)
+    selectPage:SetText("Select All")
     SkinEAAButton(selectPage)
 
     local currentPage = "general"
@@ -2077,7 +2192,7 @@ local function CreatePanel()
     sound:SetPoint("BOTTOMLEFT",24,7)
     local st = sound:CreateFontString(nil,"OVERLAY","GameFontNormal")
     st:SetPoint("LEFT",sound,"RIGHT",2,0)
-    st:SetText("Alert noise")
+    st:SetText("Alert Sound")
     SetEAATextColor(st,EAA_THEME.text)
     sound:SetScript("OnClick",function(self)
         EbonAffixAlertDB.alertSound = self:GetChecked() and true or false

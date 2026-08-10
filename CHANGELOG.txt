@@ -1,5 +1,16 @@
 # Ebon Affix Alert Changelog
 
+## v1.0.1 - 2026-08-09
+
+- Improved the Fantasy affix filter with a brighter, unobscured Filter label, a darker input field, brighter typed text, and a clearer bronze-gold border.
+- Renamed "Alert Noise" to "Alert Sound".
+- Corrected the Weapon affix name "Frality" to "Frailty".
+- Renamed "Select Page" to "Select All".
+- Added clickable General rank headers: clicking a Roman numeral tracks all available General affixes of that rank, or clears the rank if every available affix at that rank is already selected.
+- Added explanatory tooltips to General rank headers and each affix row's "All" button.
+- Removed the extra "EAA tracking: ..." line from Ebonhold-powered affix tooltips.
+
+
 ## v1.0.0 - 2026-08-09
 
 - First public release of Ebon Affix Alert.

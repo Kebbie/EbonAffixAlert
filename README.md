@@ -54,8 +54,9 @@ World of Warcraft\Interface\AddOns
 
 - Separate General and Weapon affix pages
 - General affixes can be tracked rank-by-rank
+- Click a General rank Roman numeral to track every available General affix of that rank; click it again when the whole rank is selected to clear that rank
 - Each General row has an **“All”** control for selecting or clearing every available rank for that affix
-- **“Select Page”** selects every option on the currently displayed page
+- **“Select All”** selects every option on the currently displayed page
 - **“Clear All”** clears all tracked affixes
 - Search/filter box for quickly finding an affix
 - **“Tracked only”** filter for showing only your currently tracked affixes
