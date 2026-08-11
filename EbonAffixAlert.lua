@@ -1,4 +1,4 @@
--- Ebon Affix Alert v1.1.1
+-- Ebon Affix Alert v1.1.2
 -- WoW 3.3.5a compatible core
 
 -- General affixes: {name, fallback max rank}. Ebonhold API overrides rank when available.
@@ -205,7 +205,7 @@ local function GetEAAVersion()
     if GetAddOnMetadata then
         return GetAddOnMetadata("EbonAffixAlert","Version") or "1.1.1"
     end
-    return "1.1.1"
+    return "1.1.2"
 end
 
 -- Two lightweight skins; the selected style is saved in EbonAffixAlertDB.
@@ -1078,6 +1078,16 @@ end
 -- is removed from normal chat frames immediately after joining.
 -- ---------------------------------------------------------------------------
 local EAA_UPDATE_CHANNEL = "ebonaffixalert"
+local EAA_RELEASE_VERSION = "1.1.2"
+
+
+local eaaUpdateDebug = false
+
+local function EAAUpdateDebugPrint(text)
+    if not eaaUpdateDebug then return end
+    DEFAULT_CHAT_FRAME:AddMessage("|cff66ccff[EAA Update Debug]|r " .. tostring(text))
+end
+
 local EAA_UPDATE_WIRE_PREFIX = "EAAUPD1"
 local EAA_RELEASES_URL = "https://github.com/Kebbie/EbonAffixAlert/releases"
 local EAA_RELEASE_LINK = "|cff33ff33|Heaaupdate:releases|h[GitHub Releases]|h|r"
@@ -1111,16 +1121,35 @@ local function EAAIsUpdateChannelName(name)
 end
 
 local function EAAFindUpdateChannel()
-    if not GetChannelList then return nil end
-    local channels = { GetChannelList() }
-    local i
-    for i=1,#channels,2 do
-        local idx = tonumber(channels[i])
-        local name = channels[i+1]
-        if idx and idx > 0 and EAAIsUpdateChannelName(name) then
+    -- Prefer the named lookup. On Project Ebonhold this returns the live
+    -- numeric channel index without requiring assumptions about tuple width.
+    if GetChannelName then
+        local idx,name = GetChannelName(EAA_UPDATE_CHANNEL)
+        idx = tonumber(idx)
+        if idx and idx > 0 then
+            EAAUpdateDebugPrint("Resolved channel directly: #"
+                .. tostring(idx) .. " (" .. tostring(name or EAA_UPDATE_CHANNEL) .. ")")
             return idx
         end
     end
+
+    -- Fallback: scan adjacent values instead of stepping by 2 or 3.
+    if GetChannelList then
+        local channels = { GetChannelList() }
+        local i
+        for i=1,#channels-1 do
+            local idx = tonumber(channels[i])
+            local name = channels[i+1]
+            if idx and idx > 0 and EAAIsUpdateChannelName(name) then
+                EAAUpdateDebugPrint("Resolved channel from GetChannelList: #"
+                    .. tostring(idx) .. " (" .. tostring(name) .. ")")
+                return idx
+            end
+        end
+    end
+
+    EAAUpdateDebugPrint("Could not resolve a live channel number for "
+        .. EAA_UPDATE_CHANNEL .. ".")
     return nil
 end
 
@@ -1136,19 +1165,35 @@ local function EAAHideUpdateChannel()
 end
 
 local function EAAJoinUpdateChannel()
-    if eaaUpdateJoined then return end
+    if eaaUpdateJoined then
+        EAAUpdateDebugPrint("Join skipped; channel already marked joined.")
+        return
+    end
+
     eaaUpdateJoined = true
     eaaUpdateJoinStartedAt = GetTime()
     eaaUpdateChannelIndex = EAAFindUpdateChannel()
+
     if not eaaUpdateChannelIndex and JoinChannelByName then
-        eaaUpdateChannelIndex = JoinChannelByName(EAA_UPDATE_CHANNEL)
+        JoinChannelByName(EAA_UPDATE_CHANNEL)
+        EAAUpdateDebugPrint("Join requested for " .. EAA_UPDATE_CHANNEL .. ".")
+        -- Do not trust JoinChannelByName's return value as the final channel
+        -- number; resolve it from the named channel once the join settles.
+        eaaUpdateChannelIndex = EAAFindUpdateChannel()
     end
+
     EAAHideUpdateChannel()
 end
 
+local EAA_UPDATE_WIRE_DELIMITER = "~"
+
 local function EAAQueueUpdateMessage(msgType,payload)
     if not eaaUpdateJoined then EAAJoinUpdateChannel() end
-    local wire = EAA_UPDATE_WIRE_PREFIX .. "|" .. tostring(msgType) .. "|" .. tostring(payload or "")
+    local wire = EAA_UPDATE_WIRE_PREFIX
+        .. EAA_UPDATE_WIRE_DELIMITER
+        .. tostring(msgType)
+        .. EAA_UPDATE_WIRE_DELIMITER
+        .. tostring(payload or "")
     if string.len(wire) > 240 then return end
     if #eaaUpdateQueue >= EAA_UPDATE_MAX_QUEUE then
         table.remove(eaaUpdateQueue,1)
@@ -1176,7 +1221,7 @@ end
 
 local function EAAConsiderPeerVersion(verStr,sender)
     local peerInt,peerMajor = EAAParseVersion(verStr)
-    local myInt,myMajor = EAAParseVersion(GetEAAVersion())
+    local myInt,myMajor = EAAParseVersion(EAA_RELEASE_VERSION)
     if not peerInt or not myInt then return end
 
     local me = UnitName and UnitName("player")
@@ -1201,7 +1246,7 @@ local function EAAConsiderPeerVersion(verStr,sender)
             DEFAULT_CHAT_FRAME:AddMessage(
             "|cff33ff99[EAA]|r |cffffff00Update available: v"
             .. string.gsub(tostring(verStr),"^[vV]","")
-            .. "|r (you have v" .. tostring(GetEAAVersion()) .. "). "
+            .. "|r (you have v" .. tostring(EAA_RELEASE_VERSION) .. "). "
                 .. EAA_RELEASE_LINK
             )
         end
@@ -1228,8 +1273,12 @@ eaaUpdateFrame:SetScript("OnEvent",function(self,event,text,sender,_,channelName
     end
 
     local decoded = EAAStripUpdateChannelPrefix(text)
-    local prefix,msgType,payload = string.match(decoded,"^([^|]+)|([^|]+)|(.*)$")
+    local prefix,msgType,payload = string.match(decoded,"^([^~]+)~([^~]+)~(.*)$")
     if prefix ~= EAA_UPDATE_WIRE_PREFIX then return end
+
+    EAAUpdateDebugPrint("RX #" .. tostring(channelNumber or "?")
+        .. " from " .. tostring(sender or "?")
+        .. ": " .. tostring(msgType) .. "|" .. tostring(payload))
 
     if type(channelNumber) == "number" and channelNumber > 0 then
         if eaaUpdateChannelIndex ~= channelNumber then
@@ -1241,7 +1290,7 @@ eaaUpdateFrame:SetScript("OnEvent",function(self,event,text,sender,_,channelName
     if msgType == "VERQ" then
         EAAConsiderPeerVersion(payload,sender)
         if sender and sender ~= (UnitName and UnitName("player")) then
-            EAAQueueUpdateMessage("VERR",GetEAAVersion())
+            EAAQueueUpdateMessage("VERR",EAA_RELEASE_VERSION)
         end
     elseif msgType == "VERR" then
         EAAConsiderPeerVersion(payload,sender)
@@ -1271,7 +1320,7 @@ eaaUpdateFrame:SetScript("OnUpdate",function(self,delta)
     if not eaaUpdateQuerySent and eaaUpdateJoinStartedAt
         and GetTime() - eaaUpdateJoinStartedAt >= 2 then
         eaaUpdateQuerySent = true
-        EAAQueueUpdateMessage("VERQ",GetEAAVersion())
+        EAAQueueUpdateMessage("VERQ",EAA_RELEASE_VERSION)
     end
 
     if #eaaUpdateQueue == 0 or GetTime() < eaaUpdateNextSend then return end
@@ -1291,16 +1340,42 @@ eaaUpdateFrame:SetScript("OnUpdate",function(self,delta)
     -- missing index risks either losing the message or posting into another channel.
     if not eaaUpdateChannelIndex or eaaUpdateChannelIndex <= 0 then
         eaaUpdateChannelIndex = EAAFindUpdateChannel()
-        if not eaaUpdateChannelIndex then return end
+        if not eaaUpdateChannelIndex then
+            if not self.eaaLastNoChannelDebugAt
+                or GetTime() - self.eaaLastNoChannelDebugAt >= 1 then
+                self.eaaLastNoChannelDebugAt = GetTime()
+                EAAUpdateDebugPrint("TX waiting: packet queued but no valid channel number is available.")
+            end
+            return
+        end
     end
 
     local wire = eaaUpdateQueue[1]
-    local sent = pcall(SendChatMessage,wire,"CHANNEL",nil,eaaUpdateChannelIndex)
-    if sent then
+    EAAUpdateDebugPrint("TX #" .. tostring(eaaUpdateChannelIndex)
+        .. ": " .. tostring(wire))
+
+    local ok,err = pcall(SendChatMessage,wire,"CHANNEL",nil,eaaUpdateChannelIndex)
+    if ok then
         table.remove(eaaUpdateQueue,1)
         eaaUpdateNextSend = GetTime() + EAA_UPDATE_SEND_DELAY
+        self.eaaUpdateSendFailures = 0
     else
+        self.eaaUpdateSendFailures = (self.eaaUpdateSendFailures or 0) + 1
+        EAAUpdateDebugPrint(
+            "TX failed (" .. tostring(self.eaaUpdateSendFailures) .. "/3): "
+            .. tostring(err)
+        )
+
+        -- Never hammer SendChatMessage every frame if the client rejects a
+        -- packet. Retry at most three times, with a one-second backoff.
+        eaaUpdateNextSend = GetTime() + 1
         eaaUpdateChannelIndex = nil
+
+        if self.eaaUpdateSendFailures >= 3 then
+            EAAUpdateDebugPrint("Dropping failed update packet after 3 attempts.")
+            table.remove(eaaUpdateQueue,1)
+            self.eaaUpdateSendFailures = 0
+        end
     end
 end)
 
@@ -1342,7 +1417,7 @@ local function EAARequestManualUpdateCheck()
     eaaManualUpdateCheckEndsAt = now + EAA_MANUAL_UPDATE_RESULT_DELAY
 
     EAAJoinUpdateChannel()
-    EAAQueueUpdateMessage("VERQ",GetEAAVersion())
+    EAAQueueUpdateMessage("VERQ",EAA_RELEASE_VERSION)
 
     DEFAULT_CHAT_FRAME:AddMessage(
         "|cff33ff99[EAA]|r Checking the realm for newer EAA versions..."
@@ -1353,7 +1428,8 @@ end
 local function EAAPrintUpdateStatus()
     local idx = EAAFindUpdateChannel() or eaaUpdateChannelIndex
     local latest = eaaHighestSeenVersion and ("v" .. string.gsub(eaaHighestSeenVersion,"^[vV]","")) or "none seen"
-    DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[EAA Update]|r Installed: |cffffff00v" .. GetEAAVersion() .. "|r")
+    DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[EAA Update]|r Installed build: |cffffff00v" .. GetEAAVersion() .. "|r")
+    DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[EAA Update]|r Advertised release: |cffffff00v" .. EAA_RELEASE_VERSION .. "|r")
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[EAA Update]|r Realm channel: "
         .. (idx and ("|cff00ff00joined|r (#" .. tostring(idx) .. ")") or "|cffff5555not joined|r"))
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[EAA Update]|r Newest version seen: |cffffff00" .. latest .. "|r")
@@ -4489,6 +4565,7 @@ CreateInterfaceOptionsPanel = function()
         { label = "Status", cmd = "status", desc = "/eaa status - print a one-time EAA health summary." },
         { label = "Rescan Icons", cmd = "rescanicons", desc = "/eaa rescanIcons - re-request Ebonhold affix/icon data." },
         { label = "Clear Cache", cmd = "clearcache", desc = "/eaa clearCache - clear EAA icon/runtime caches safely." },
+        { label = "Update Debug", cmd = "updatedebug", desc = "/eaa updateDebug - toggle realm update-channel TX/RX diagnostics." },
         { label = "Bug Report", cmd = "bugreport", desc = "/eaa bugReport - open a selectable troubleshooting report to copy and share." },
     }
 
@@ -4549,6 +4626,27 @@ function EbonAffixAlert_HandleSlash(msg)
         return
     elseif msg == "updatestatus" then
         EAAPrintUpdateStatus()
+        return
+    elseif msg == "updatedebug" then
+        eaaUpdateDebug = not eaaUpdateDebug
+        DEFAULT_CHAT_FRAME:AddMessage(
+            "|cff33ff99[EAA]|r Update debug "
+            .. (eaaUpdateDebug and "|cff00ff00ON|r." or "|cffff5555OFF|r.")
+        )
+        if eaaUpdateDebug then
+            local idx = EAAFindUpdateChannel()
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cff66ccff[EAA Update Debug]|r Build version: v"
+                .. tostring(GetEAAVersion())
+                .. ", advertised release: v" .. tostring(EAA_RELEASE_VERSION)
+            )
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cff66ccff[EAA Update Debug]|r Joined flag: "
+                .. tostring(eaaUpdateJoined)
+                .. ", resolved channel: " .. tostring(idx or "none")
+                .. ", queued packets: " .. tostring(#eaaUpdateQueue)
+            )
+        end
         return
     elseif msg == "updatetest" or msg == "realmtest" then
         EAARunUpdateSelfTest()

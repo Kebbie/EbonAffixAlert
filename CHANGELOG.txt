@@ -1,5 +1,15 @@
 # Ebon Affix Alert Changelog
 
+## v1.1.2
+
+- Fixed issue that kept you from staying afk
+  - Added a separate advertised release version so development builds can use a higher local version without falsely advertising an unreleased update to other players.
+  - Fixed update-channel packets being rejected as invalid chat escape codes by replacing the `|` protocol delimiter with chat-safe `~`.
+  - Added a 1-second retry backoff and 3-attempt limit for failed update-channel sends.
+  - Fixed realm update-channel discovery on Project Ebonhold by resolving `ebonaffixalert` directly with GetChannelName before using a tuple-width-agnostic GetChannelList fallback.
+  - Added `/eaa updateDebug` to show update-channel resolution, queued sends, actual TX packets and RX packets.
+  - Added Update Debug to Interface > AddOns > EbonAffixAlert > Diagnostics.
+
 ## v1.1.1 - 2026-08-10
 
 - Fixed existing bag items being re-alerted after unrelated loot by using a stable canonical item identity for ownership snapshots instead of the full rendered item hyperlink.
