@@ -2,15 +2,20 @@
 
 ## v1.1.1 - 2026-08-10
 
+- Fixed existing bag items being re-alerted after unrelated loot by using a stable canonical item identity for ownership snapshots instead of the full rendered item hyperlink.
+- Fixed duplicate tracked-item alerts during ordinary bag/equipment updates by debouncing BAG_UPDATE until inventory changes have settled.
+- Fixed a Lua 5.1 forward-declaration error in the manual update-result timer.
+- Fixed manual Update Check result timing so the up-to-date result is processed by the active realm-update frame after 1 second, independently of the 5-second button cooldown.
+- Manual Update Check now reports its result after 1 second while retaining the 5-second anti-spam cooldown.
 - Added an Update Check button to Interface > AddOns > EbonAffixAlert with a visible 5-second cooldown to prevent update-channel/chat spam.
+
 - Added realm-wide update tracking over a hidden `ebonaffixalert` chat channel.
 - EAA broadcasts/answers semantic version checks and alerts once per session when a newer peer version is seen.
 - Added a clickable GitHub Releases chat link; clicking opens a copyable releases URL window for WoW 3.3.5a.
-- Added `/eaa update` for update/channel status and `/eaa updateTest` for a channel echo self-test.
+- Added `/eaa update` for update/channel status and `/eaa updateTest` (alias `/eaa realmTest`) for a channel echo self-test.
 
 ## v1.1.0 - 2026-08-10
 
-- Removed legacy "... of Affix" Weapon-name suffix detection.
 - Generalized the built-in verified Weapon proc signatures so they no longer depend on one source item's damage, healing, duration, rating, or percentage values.
 - Removed the remaining legacy Flat UI theme implementation from EbonAffixAlert.lua; only Modern and Fantasy remain.
 - Added a built-in verified original Weapon-proc signature table as the primary Weapon-affix identification source.
@@ -18,7 +23,12 @@
 - Added support for original ranged weapon tooltip lines shaped as `Equip: Chance to strike...`.
 - Twin Shot remains on the live Ebonhold-description fallback because no verified original Twin Shot source proc has been established yet.
 - Added `/eaa weaponAffixes` to export all `weaponOnly` affix names, spell IDs, Ebonhold API descriptions, and normalized comparison text into a copyable window.
-- Fixed a Lua issue that could cause `FindTrackedWeaponAffixByProc` to be nil when a tracked Weapon-affix item was looted.
+- Changed Weapon-affix proc identification to score meaningful word overlap between the item proc and Project Ebonhold's full affix description, allowing matches even when Ebonhold wraps the proc text in instructional wording.
+- Improved Weapon-affix proc matching to tolerate small wording differences between Ebonhold spell descriptions and generated item proc text, and expanded Debug output for proc comparison troubleshooting.
+- Added short delayed tooltip retries for newly acquired weapons so proc-based Weapon-affix detection remains reliable when item data is not immediately available, such as when taking an item from the mailbox.
+- Added Weapon-affix proc detection using Project Ebonhold's affix spell data, allowing normally named weapons to be identified from their "Chance on hit"/"Chance to strike" effects.
+- Removed legacy "... of Affix" Weapon-name suffix detection.
+- Fixed a Lua scope issue that could cause `FindTrackedWeaponAffixByProc` to be nil when a tracked Weapon-affix item was looted.
 
 ## v1.0.1 - 2026-08-09
 

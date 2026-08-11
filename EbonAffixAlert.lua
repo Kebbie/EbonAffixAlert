@@ -4017,10 +4017,60 @@ weaponRetryFrame:SetScript("OnUpdate",function(self,delta)
 end)
 
 -- Snapshot total ownership across bags and equipped slots.
+--
+-- Do NOT key ownership by the entire rendered hyperlink. On some 3.3.5a
+-- clients the same item can be returned with cosmetic/link-format differences
+-- after a bag refresh. That makes an already-owned item look like a brand-new
+-- key. Instead use the stable item-string payload through the unique-id field
+-- and ignore trailing link/display metadata.
+local function GetStableItemIdentity(link)
+    if not link then return nil end
+
+    local itemString = string.match(link,"item:([-%d:]+)")
+    if not itemString then
+        return tostring(link)
+    end
+
+    local fields = {}
+    local value
+    for value in string.gmatch(itemString,"([^:]+)") do
+        table.insert(fields,value)
+    end
+
+    -- 3.3.5 item links are:
+    -- itemId:enchant:gem1:gem2:gem3:gem4:suffix:uniqueId:level:...
+    -- Keep through uniqueId. This preserves random-suffix/affix identity and
+    -- distinguishes separate item instances, while ignoring trailing fields
+    -- that can vary with client/link context.
+    local keep = math.min(#fields,8)
+    local parts = {}
+    local i
+    for i=1,keep do
+        parts[i] = fields[i]
+    end
+
+    return table.concat(parts,":")
+end
+
+local function AddSnapshotItem(snapshot,links,link,count)
+    if not link then return end
+
+    local key = GetStableItemIdentity(link)
+    if not key then return end
+
+    snapshot[key] = (snapshot[key] or 0) + (count or 1)
+
+    -- Keep one current hyperlink for tooltip scanning / user-facing alerts.
+    if not links[key] then
+        links[key] = link
+    end
+end
+
 local function CaptureBagSnapshot()
     -- Track TOTAL quantity owned across bags + equipped slots.
     -- Looting increases the total; moving/equipping/unequipping does not.
     local snapshot = {}
+    local links = {}
     local bag, slot
 
     for bag = 0, 4 do
@@ -4029,8 +4079,7 @@ local function CaptureBagSnapshot()
             local link = GetContainerItemLink(bag, slot)
             if link then
                 local _, count = GetContainerItemInfo(bag, slot)
-                count = count or 1
-                snapshot[link] = (snapshot[link] or 0) + count
+                AddSnapshotItem(snapshot,links,link,count or 1)
             end
         end
     end
@@ -4038,55 +4087,101 @@ local function CaptureBagSnapshot()
     for slot = 1, 19 do
         local link = GetInventoryItemLink("player", slot)
         if link then
-            snapshot[link] = (snapshot[link] or 0) + 1
+            AddSnapshotItem(snapshot,links,link,1)
         end
     end
 
-    return snapshot
+    return snapshot, links
+end
+
+local bagSnapshotLinks = {}
+
+local function RefreshBagBaseline()
+    local current, links = CaptureBagSnapshot()
+    bagSnapshot = current
+    bagSnapshotLinks = links
 end
 
 local function CheckBagChanges()
-    local current = CaptureBagSnapshot()
+    local current, currentLinks = CaptureBagSnapshot()
 
     -- During login/teleport/world transitions, bag APIs can temporarily report
     -- an incomplete inventory and then repopulate it. Refresh the baseline but
     -- never treat those repopulated items as loot.
     if GetTime() < suppressBagAlertsUntil then
         bagSnapshot = current
+        bagSnapshotLinks = currentLinks
         return
     end
 
     if not EbonAffixAlertDB.enabled then
         bagSnapshot = current
+        bagSnapshotLinks = currentLinks
         return
     end
 
-    local link, currentCount
-    for link, currentCount in pairs(current) do
-        local oldCount = bagSnapshot[link] or 0
+    local key, currentCount
+    for key, currentCount in pairs(current) do
+        local oldCount = bagSnapshot[key] or 0
 
         -- Only treat the item as newly acquired if the TOTAL quantity of this
-        -- exact affixed item increased. Moving/rearranging it leaves the total
-        -- unchanged and therefore cannot trigger an alert.
+        -- stable item identity increased. Moving/rearranging it leaves the
+        -- total unchanged and therefore cannot trigger an alert.
         if currentCount > oldCount then
+            local link = currentLinks[key]
+
             if EbonAffixAlertDB.debug then
                 DEFAULT_CHAT_FRAME:AddMessage(
                     "|cff66ccff[EAA Debug]|r Total owned count increased: "
-                    .. tostring(link)
+                    .. tostring(key)
                     .. " (" .. tostring(oldCount)
                     .. " -> " .. tostring(currentCount) .. ")"
                 )
             end
 
-            local alerted = AlertForLink(link, "INVENTORY_COUNT_INCREASE")
-            if not alerted then
-                QueueWeaponAffixRetry(link)
+            if link then
+                local alerted = AlertForLink(link, "INVENTORY_COUNT_INCREASE")
+                if not alerted then
+                    QueueWeaponAffixRetry(link)
+                end
             end
         end
     end
 
     bagSnapshot = current
+    bagSnapshotLinks = currentLinks
 end
+
+-- BAG_UPDATE can fire once for the source bag and again for the destination
+-- bag during a move/equip/mail transaction. Reading the inventory between those
+-- events can produce a temporary lower count, followed by the original count.
+-- Debounce the event stream so EAA compares only after the transaction settles.
+local EAA_BAG_UPDATE_DEBOUNCE = 0.25
+local bagUpdateDebounceFrame = CreateFrame("Frame")
+local bagUpdatePending = false
+local bagUpdateElapsed = 0
+
+local function ScheduleBagChangeCheck()
+    bagUpdatePending = true
+    bagUpdateElapsed = 0
+    bagUpdateDebounceFrame:Show()
+end
+
+bagUpdateDebounceFrame:SetScript("OnUpdate",function(self,delta)
+    if not bagUpdatePending then
+        self:Hide()
+        return
+    end
+
+    bagUpdateElapsed = bagUpdateElapsed + delta
+    if bagUpdateElapsed < EAA_BAG_UPDATE_DEBOUNCE then return end
+
+    bagUpdatePending = false
+    bagUpdateElapsed = 0
+    self:Hide()
+    CheckBagChanges()
+end)
+bagUpdateDebounceFrame:Hide()
 
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("PLAYER_LOGIN")
@@ -4112,7 +4207,7 @@ frame:SetScript("OnEvent",function(self,event,...)
         CreateInterfaceOptionsPanel()
         ApplyAffixIconsToRows()
         RequestEbonholdAffixIcons()
-        bagSnapshot = CaptureBagSnapshot()
+        RefreshBagBaseline()
         suppressBagAlertsUntil = GetTime() + 4
 
         EbonAffixAlertMainLoaded = true
@@ -4149,6 +4244,10 @@ frame:SetScript("OnEvent",function(self,event,...)
         -- after login, zoning or teleporting.
         suppressBagAlertsUntil = GetTime() + 4
 
+        bagUpdatePending = false
+        bagUpdateElapsed = 0
+        bagUpdateDebounceFrame:Hide()
+
         if not pendingSnapshotRefresh then
             pendingSnapshotRefresh = CreateFrame("Frame")
         end
@@ -4158,7 +4257,7 @@ frame:SetScript("OnEvent",function(self,event,...)
             elapsed = elapsed + delta
             if elapsed >= 2 then
                 self:SetScript("OnUpdate",nil)
-                bagSnapshot = CaptureBagSnapshot()
+                RefreshBagBaseline()
 
                 if EbonAffixAlertDB and EbonAffixAlertDB.debug then
                     DEFAULT_CHAT_FRAME:AddMessage(
@@ -4193,9 +4292,9 @@ frame:SetScript("OnEvent",function(self,event,...)
 
     if event == "BAG_UPDATE" then
         if EbonAffixAlertDB and EbonAffixAlertDB.debug then
-            DEFAULT_CHAT_FRAME:AddMessage("|cff66ccff[EAA Debug]|r BAG_UPDATE fired.")
+            DEFAULT_CHAT_FRAME:AddMessage("|cff66ccff[EAA Debug]|r BAG_UPDATE fired; ownership check scheduled.")
         end
-        CheckBagChanges()
+        ScheduleBagChangeCheck()
         return
     end
 end)
