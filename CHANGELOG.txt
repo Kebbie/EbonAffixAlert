@@ -1,7 +1,28 @@
 # Ebon Affix Alert Changelog
 
+## v1.1.1 - 2026-08-10
+
+- Added an Update Check button to Interface > AddOns > EbonAffixAlert with a visible 5-second cooldown to prevent update-channel/chat spam.
+- Added realm-wide update tracking over a hidden `ebonaffixalert` chat channel.
+- EAA broadcasts/answers semantic version checks and alerts once per session when a newer peer version is seen.
+- Added a clickable GitHub Releases chat link; clicking opens a copyable releases URL window for WoW 3.3.5a.
+- Added `/eaa update` for update/channel status and `/eaa updateTest` for a channel echo self-test.
+
+## v1.1.0 - 2026-08-10
+
+- Removed legacy "... of Affix" Weapon-name suffix detection.
+- Generalized the built-in verified Weapon proc signatures so they no longer depend on one source item's damage, healing, duration, rating, or percentage values.
+- Removed the remaining legacy Flat UI theme implementation from EbonAffixAlert.lua; only Modern and Fantasy remain.
+- Added a built-in verified original Weapon-proc signature table as the primary Weapon-affix identification source.
+- Retained Project Ebonhold `ExtractionService.learnedAffixes` description matching as a fallback for future/new Weapon affixes that are not yet in the verified table.
+- Added support for original ranged weapon tooltip lines shaped as `Equip: Chance to strike...`.
+- Twin Shot remains on the live Ebonhold-description fallback because no verified original Twin Shot source proc has been established yet.
+- Added `/eaa weaponAffixes` to export all `weaponOnly` affix names, spell IDs, Ebonhold API descriptions, and normalized comparison text into a copyable window.
+- Fixed a Lua issue that could cause `FindTrackedWeaponAffixByProc` to be nil when a tracked Weapon-affix item was looted.
+
 ## v1.0.1 - 2026-08-09
 
+- Adjusted the General filter controls so "Tracked only" no longer overlaps the "Select All" button.
 - Improved the Fantasy affix filter with a brighter, unobscured Filter label, a darker input field, brighter typed text, and a clearer bronze-gold border.
 - Renamed "Alert Noise" to "Alert Sound".
 - Corrected the Weapon affix name "Frality" to "Frailty".

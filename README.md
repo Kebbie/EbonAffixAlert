@@ -63,6 +63,8 @@ World of Warcraft\Interface\AddOns
 
 ### Loot detection
 
+- Newly acquired weapons receive short delayed tooltip retries if their proc data is not immediately available
+- Weapon affixes can also be identified from their Ebonhold proc text when the affix is not present in the weapon name
 **EAA** will detect when you loot an item with a tracked affix and alert you. Several safeguarding measure have been implemented to prevent false alerts.
 
 ### Alerts
@@ -75,6 +77,7 @@ World of Warcraft\Interface\AddOns
 
 ### Project Ebonhold integration
 
+- `/eaa weaponAffixes` exports all Weapon-affix spell descriptions currently provided by Project Ebonhold into a copyable window
 Where available, **EAA** uses **Project Ebonhold**'s ExtractionService.learnedAffixes data to obtain:
 
 - canonical affix names
@@ -284,3 +287,6 @@ Reproduce the problem, then provide `Logs\taint.log` along with an **EAA** Bug R
 The MIT License permits use, copying, modification, merging, publishing, distribution, sublicensing and/or sale of copies of the software, subject to retaining the copyright and license notice.
 
 See CHANGELOG.txt for version-specific changes.
+
+### Update checking
+EAA uses a hidden realm-wide `ebonaffixalert` chat channel to exchange installed versions with other EAA users. If a newer version is seen, EAA prints a one-time update notice with a clickable GitHub Releases link. `/eaa update` shows update-channel status and `/eaa updateTest` runs a channel echo test.

@@ -1,4 +1,4 @@
--- Ebon Affix Alert v1.0.1
+-- Ebon Affix Alert v1.1.1
 -- WoW 3.3.5a compatible core
 
 -- General affixes: {name, fallback max rank}. Ebonhold API overrides rank when available.
@@ -126,6 +126,7 @@ local filterText = ""
 local trackedOnly = false
 local affixIconCache = {}
 local serverAffixCatalog = {}
+local weaponProcDescriptionsStale = true
 local iconRefreshFrame
 local perfMonitorFrame
 local perfMonitorEnabled = false
@@ -156,6 +157,9 @@ local function EnsureDB()
     end
     if EbonAffixAlertDB.debug == nil then EbonAffixAlertDB.debug = false end
     if EbonAffixAlertDB.uiStyle == nil then EbonAffixAlertDB.uiStyle = "Modern" end
+    if EbonAffixAlertDB.uiStyle ~= "Modern" and EbonAffixAlertDB.uiStyle ~= "Fantasy" then
+        EbonAffixAlertDB.uiStyle = "Modern"
+    end
     if type(EbonAffixAlertDB.tracked) ~= "table" then EbonAffixAlertDB.tracked = {} end
     if type(EbonAffixAlertDB.affixIcons) ~= "table" then EbonAffixAlertDB.affixIcons = {} end
     if type(EbonAffixAlertDB.minimap) ~= "table" then
@@ -199,12 +203,12 @@ end
 
 local function GetEAAVersion()
     if GetAddOnMetadata then
-        return GetAddOnMetadata("EbonAffixAlert","Version") or "1.0.1"
+        return GetAddOnMetadata("EbonAffixAlert","Version") or "1.1.1"
     end
-    return "1.0.1"
+    return "1.1.1"
 end
 
--- Three lightweight skins; the selected style is saved in EbonAffixAlertDB.
+-- Two lightweight skins; the selected style is saved in EbonAffixAlertDB.
 local EAA_THEMES = {
     Modern = {
         frameBG = {0.03,0.04,0.09,1.00},
@@ -245,26 +249,6 @@ local EAA_THEMES = {
         buttonPressedBorder = {0.73,0.46,0.88,0.99},
         accentAlpha = 0.82,
         accent2Alpha = 0.68
-    },
-    Flat = {
-        frameBG = {0.055,0.065,0.08,1.00},
-        frameBorder = {0.18,0.24,0.30,0.90},
-        innerBG = {0.075,0.085,0.10,0.78},
-        innerBorder = {0.16,0.20,0.25,0.78},
-        headerBG = {0.065,0.075,0.09,0.96},
-        cyan = {0.56,0.76,0.90},
-        purple = {0.66,0.62,0.80},
-        title = {0.93,0.95,0.97},
-        text = {0.84,0.87,0.90},
-        muted = {0.61,0.65,0.69},
-        buttonBG = {0.095,0.11,0.13,0.96},
-        buttonBorder = {0.22,0.30,0.36,0.90},
-        buttonHoverBG = {0.13,0.16,0.19,0.98},
-        buttonHoverBorder = {0.48,0.65,0.76,0.94},
-        buttonPressedBG = {0.10,0.12,0.16,0.98},
-        buttonPressedBorder = {0.56,0.52,0.72,0.94},
-        accentAlpha = 0.20,
-        accent2Alpha = 0.12
     }
 }
 
@@ -1086,6 +1070,322 @@ local function ShowCopyTextWindow(titleText, bodyText)
     supportCopyWindow.edit:HighlightText()
 end
 
+-- ---------------------------------------------------------------------------
+-- Realm-wide update tracker (WoW 3.3.5a compatible)
+--
+-- Stock 3.3.5a has no realm-wide SendAddonMessage channel, so EAA uses a
+-- hidden named chat channel. Only tiny version messages are sent. The channel
+-- is removed from normal chat frames immediately after joining.
+-- ---------------------------------------------------------------------------
+local EAA_UPDATE_CHANNEL = "ebonaffixalert"
+local EAA_UPDATE_WIRE_PREFIX = "EAAUPD1"
+local EAA_RELEASES_URL = "https://github.com/Kebbie/EbonAffixAlert/releases"
+local EAA_RELEASE_LINK = "|cff33ff33|Heaaupdate:releases|h[GitHub Releases]|h|r"
+local EAA_UPDATE_SEND_DELAY = 0.20
+local EAA_UPDATE_MAX_QUEUE = 20
+
+local eaaUpdateChannelIndex = nil
+local eaaUpdateJoined = false
+local eaaUpdateQueue = {}
+local eaaUpdateNextSend = 0
+local eaaUpdateNudgeShown = false
+local eaaHighestSeenVersion = nil
+local eaaHighestSeenVersionInt = 0
+local eaaUpdateSelfTestToken = nil
+local eaaUpdateSelfTestEchoed = false
+local eaaUpdateJoinStartedAt = nil
+local eaaUpdateQuerySent = false
+
+local function EAAParseVersion(ver)
+    if type(ver) ~= "string" then return nil end
+    local major,minor,patch = string.match(ver,"^%s*[vV]?(%d+)%.(%d+)%.(%d+)%s*$")
+    major,minor,patch = tonumber(major),tonumber(minor),tonumber(patch)
+    if not major or not minor or not patch then return nil end
+    if major > 999 or minor > 999 or patch > 999 then return nil end
+    return (major * 1000000) + (minor * 1000) + patch, major, minor, patch
+end
+
+local function EAAIsUpdateChannelName(name)
+    return type(name) == "string"
+        and string.find(string.lower(name),EAA_UPDATE_CHANNEL,1,true) ~= nil
+end
+
+local function EAAFindUpdateChannel()
+    if not GetChannelList then return nil end
+    local channels = { GetChannelList() }
+    local i
+    for i=1,#channels,2 do
+        local idx = tonumber(channels[i])
+        local name = channels[i+1]
+        if idx and idx > 0 and EAAIsUpdateChannelName(name) then
+            return idx
+        end
+    end
+    return nil
+end
+
+local function EAAHideUpdateChannel()
+    if not ChatFrame_RemoveChannel then return end
+    local i
+    for i=1,(NUM_CHAT_WINDOWS or 10) do
+        local chat = _G["ChatFrame" .. i]
+        if chat then
+            ChatFrame_RemoveChannel(chat,EAA_UPDATE_CHANNEL)
+        end
+    end
+end
+
+local function EAAJoinUpdateChannel()
+    if eaaUpdateJoined then return end
+    eaaUpdateJoined = true
+    eaaUpdateJoinStartedAt = GetTime()
+    eaaUpdateChannelIndex = EAAFindUpdateChannel()
+    if not eaaUpdateChannelIndex and JoinChannelByName then
+        eaaUpdateChannelIndex = JoinChannelByName(EAA_UPDATE_CHANNEL)
+    end
+    EAAHideUpdateChannel()
+end
+
+local function EAAQueueUpdateMessage(msgType,payload)
+    if not eaaUpdateJoined then EAAJoinUpdateChannel() end
+    local wire = EAA_UPDATE_WIRE_PREFIX .. "|" .. tostring(msgType) .. "|" .. tostring(payload or "")
+    if string.len(wire) > 240 then return end
+    if #eaaUpdateQueue >= EAA_UPDATE_MAX_QUEUE then
+        table.remove(eaaUpdateQueue,1)
+    end
+    table.insert(eaaUpdateQueue,wire)
+end
+
+local function EAAShowReleaseURL()
+    ShowCopyTextWindow("EAA - GitHub Releases",EAA_RELEASES_URL)
+end
+
+-- 3.3.5's stock SetItemRef attempts to treat unknown custom links as item
+-- hyperlinks and can error. Intercept only our eaaupdate link and forward every
+-- other link untouched. This also chains safely with addons that wrap SetItemRef.
+local eaaOriginalSetItemRef = SetItemRef
+function SetItemRef(link,text,button,chatFrame)
+    if type(link) == "string" and string.sub(link,1,10) == "eaaupdate:" then
+        EAAShowReleaseURL()
+        return
+    end
+    if eaaOriginalSetItemRef then
+        return eaaOriginalSetItemRef(link,text,button,chatFrame)
+    end
+end
+
+local function EAAConsiderPeerVersion(verStr,sender)
+    local peerInt,peerMajor = EAAParseVersion(verStr)
+    local myInt,myMajor = EAAParseVersion(GetEAAVersion())
+    if not peerInt or not myInt then return end
+
+    local me = UnitName and UnitName("player")
+    if sender and me and sender == me then return end
+
+    -- Lightweight spoof guard: accept current-major and next-major versions,
+    -- but ignore absurd jumps advertised by an arbitrary chat-channel user.
+    if peerMajor > (myMajor + 1) then return end
+
+    if peerInt > eaaHighestSeenVersionInt then
+        eaaHighestSeenVersionInt = peerInt
+        eaaHighestSeenVersion = verStr
+    end
+
+    if peerInt > myInt then
+        if eaaManualUpdateCheckActive then
+            eaaManualUpdateCheckFoundNewer = true
+        end
+
+        if not eaaUpdateNudgeShown then
+            eaaUpdateNudgeShown = true
+            DEFAULT_CHAT_FRAME:AddMessage(
+            "|cff33ff99[EAA]|r |cffffff00Update available: v"
+            .. string.gsub(tostring(verStr),"^[vV]","")
+            .. "|r (you have v" .. tostring(GetEAAVersion()) .. "). "
+                .. EAA_RELEASE_LINK
+            )
+        end
+    end
+end
+
+local function EAAStripUpdateChannelPrefix(msg)
+    local text = tostring(msg or "")
+    text = string.gsub(text,"|c%x%x%x%x%x%x%x%x","")
+    text = string.gsub(text,"|r","")
+    text = string.gsub(text,"^%s*%[[^%]]+%]%s*","")
+    return text
+end
+
+local EAAProcessManualUpdateResult
+local eaaUpdateFrame = CreateFrame("Frame")
+eaaUpdateFrame:RegisterEvent("CHAT_MSG_CHANNEL")
+eaaUpdateFrame:SetScript("OnEvent",function(self,event,text,sender,_,channelName,_,_,_,channelNumber)
+    if event ~= "CHAT_MSG_CHANNEL" then return end
+    if not EAAIsUpdateChannelName(channelName) then
+        if not eaaUpdateChannelIndex or channelNumber ~= eaaUpdateChannelIndex then
+            return
+        end
+    end
+
+    local decoded = EAAStripUpdateChannelPrefix(text)
+    local prefix,msgType,payload = string.match(decoded,"^([^|]+)|([^|]+)|(.*)$")
+    if prefix ~= EAA_UPDATE_WIRE_PREFIX then return end
+
+    if type(channelNumber) == "number" and channelNumber > 0 then
+        if eaaUpdateChannelIndex ~= channelNumber then
+            eaaUpdateChannelIndex = channelNumber
+            EAAHideUpdateChannel()
+        end
+    end
+
+    if msgType == "VERQ" then
+        EAAConsiderPeerVersion(payload,sender)
+        if sender and sender ~= (UnitName and UnitName("player")) then
+            EAAQueueUpdateMessage("VERR",GetEAAVersion())
+        end
+    elseif msgType == "VERR" then
+        EAAConsiderPeerVersion(payload,sender)
+    elseif msgType == "RPNG" then
+        if eaaUpdateSelfTestToken and payload == eaaUpdateSelfTestToken then
+            eaaUpdateSelfTestEchoed = true
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cff33ff99[EAA]|r Realm update channel test: |cff00ff00OK|r (message echoed back)."
+            )
+        end
+    end
+end)
+
+eaaUpdateFrame:SetScript("OnUpdate",function(self,delta)
+    EAAProcessManualUpdateResult()
+
+    if not eaaUpdateJoined then return end
+
+    -- JoinChannelByName can return before GetChannelList reflects the final slot.
+    if (not eaaUpdateChannelIndex or eaaUpdateChannelIndex <= 0)
+        and eaaUpdateJoinStartedAt and GetTime() - eaaUpdateJoinStartedAt >= 1 then
+        eaaUpdateChannelIndex = EAAFindUpdateChannel()
+        EAAHideUpdateChannel()
+    end
+
+    -- Send one version query after the channel has had a moment to settle.
+    if not eaaUpdateQuerySent and eaaUpdateJoinStartedAt
+        and GetTime() - eaaUpdateJoinStartedAt >= 2 then
+        eaaUpdateQuerySent = true
+        EAAQueueUpdateMessage("VERQ",GetEAAVersion())
+    end
+
+    if #eaaUpdateQueue == 0 or GetTime() < eaaUpdateNextSend then return end
+
+    -- Channel numbers renumber when other channels are left. Revalidate before
+    -- every send so an old number can never dump protocol text into General.
+    if eaaUpdateChannelIndex and eaaUpdateChannelIndex > 0 and GetChannelName then
+        local _,liveName = GetChannelName(eaaUpdateChannelIndex)
+        if not EAAIsUpdateChannelName(liveName) then
+            eaaUpdateChannelIndex = EAAFindUpdateChannel()
+            EAAHideUpdateChannel()
+        end
+    end
+
+    -- Do not dequeue until the named channel has a confirmed live numeric index.
+    -- SendChatMessage's CHANNEL target is an index on 3.3.5a; using a stale or
+    -- missing index risks either losing the message or posting into another channel.
+    if not eaaUpdateChannelIndex or eaaUpdateChannelIndex <= 0 then
+        eaaUpdateChannelIndex = EAAFindUpdateChannel()
+        if not eaaUpdateChannelIndex then return end
+    end
+
+    local wire = eaaUpdateQueue[1]
+    local sent = pcall(SendChatMessage,wire,"CHANNEL",nil,eaaUpdateChannelIndex)
+    if sent then
+        table.remove(eaaUpdateQueue,1)
+        eaaUpdateNextSend = GetTime() + EAA_UPDATE_SEND_DELAY
+    else
+        eaaUpdateChannelIndex = nil
+    end
+end)
+
+local function EAAStartUpdateTracker()
+    EAAJoinUpdateChannel()
+end
+
+local EAA_MANUAL_UPDATE_COOLDOWN = 5
+local EAA_MANUAL_UPDATE_RESULT_DELAY = 1
+local eaaLastManualUpdateCheck = -100
+local eaaManualUpdateCheckActive = false
+local eaaManualUpdateCheckFoundNewer = false
+local eaaManualUpdateCheckEndsAt = 0
+
+EAAProcessManualUpdateResult = function()
+    if not eaaManualUpdateCheckActive then return end
+    if GetTime() < eaaManualUpdateCheckEndsAt then return end
+
+    eaaManualUpdateCheckActive = false
+
+    -- Visible result resolves after one second. The Update Check button and
+    -- slash command keep their independent five-second anti-spam cooldown.
+    if not eaaManualUpdateCheckFoundNewer then
+        DEFAULT_CHAT_FRAME:AddMessage(
+            "|cff33ff99[EAA]|r |cff00ff00EAA is up to date.|r No newer version was found."
+        )
+    end
+end
+
+local function EAARequestManualUpdateCheck()
+    local now = GetTime()
+    if now - eaaLastManualUpdateCheck < EAA_MANUAL_UPDATE_COOLDOWN then
+        return false
+    end
+
+    eaaLastManualUpdateCheck = now
+    eaaManualUpdateCheckActive = true
+    eaaManualUpdateCheckFoundNewer = false
+    eaaManualUpdateCheckEndsAt = now + EAA_MANUAL_UPDATE_RESULT_DELAY
+
+    EAAJoinUpdateChannel()
+    EAAQueueUpdateMessage("VERQ",GetEAAVersion())
+
+    DEFAULT_CHAT_FRAME:AddMessage(
+        "|cff33ff99[EAA]|r Checking the realm for newer EAA versions..."
+    )
+    return true
+end
+
+local function EAAPrintUpdateStatus()
+    local idx = EAAFindUpdateChannel() or eaaUpdateChannelIndex
+    local latest = eaaHighestSeenVersion and ("v" .. string.gsub(eaaHighestSeenVersion,"^[vV]","")) or "none seen"
+    DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[EAA Update]|r Installed: |cffffff00v" .. GetEAAVersion() .. "|r")
+    DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[EAA Update]|r Realm channel: "
+        .. (idx and ("|cff00ff00joined|r (#" .. tostring(idx) .. ")") or "|cffff5555not joined|r"))
+    DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[EAA Update]|r Newest version seen: |cffffff00" .. latest .. "|r")
+    DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[EAA Update]|r Releases: " .. EAA_RELEASE_LINK)
+end
+
+local function EAARunUpdateSelfTest()
+    EAAJoinUpdateChannel()
+    local idx = EAAFindUpdateChannel() or eaaUpdateChannelIndex
+    DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[EAA]|r Realm update channel self-test. Joined: "
+        .. (idx and "|cff00ff00yes|r" or "|cffff5555not yet|r")
+        .. ", channel index: " .. tostring(idx or "unknown") .. ".")
+    eaaUpdateSelfTestToken = tostring(GetTime())
+    eaaUpdateSelfTestEchoed = false
+    EAAQueueUpdateMessage("RPNG",eaaUpdateSelfTestToken)
+
+    local wait = CreateFrame("Frame")
+    local elapsed = 0
+    wait:SetScript("OnUpdate",function(self,dt)
+        elapsed = elapsed + dt
+        if elapsed >= 3 then
+            self:SetScript("OnUpdate",nil)
+            if not eaaUpdateSelfTestEchoed then
+                DEFAULT_CHAT_FRAME:AddMessage(
+                    "|cff33ff99[EAA]|r Realm update channel test: no echo received in 3 seconds. "
+                    .. "Try /reload or check whether all 10 chat-channel slots are already in use."
+                )
+            end
+        end
+    end)
+end
+
 local function BuildTrackedConfigExport()
     local lines = {
         "EbonAffixAlert Tracked Configuration",
@@ -1314,6 +1614,9 @@ RefreshAffixIconsFromEbonhold = function()
             end
         end
     end
+
+    -- Weapon spell IDs/descriptions may have changed with the server catalogue.
+    weaponProcDescriptionsStale = true
 
     if found then
         ApplyAffixIconsToRows()
@@ -2387,8 +2690,12 @@ local function EndsWith(text,suffix)
     return string.sub(text,-string.len(suffix)) == suffix
 end
 
+-- Forward declaration: FindTrackedAffix is defined before the Weapon proc
+-- scanner implementation below, so both functions must share this upvalue.
+local FindTrackedWeaponAffixByProc
+
 -- Match the displayed item suffix against the user's tracked selections.
-local function FindTrackedAffix(itemName)
+local function FindTrackedAffix(itemName,itemLink)
     local _, entry, rank, name
 
     for _,entry in ipairs(generalAffixes) do
@@ -2412,13 +2719,566 @@ local function FindTrackedAffix(itemName)
         end
     end
 
-    for _,name in ipairs(weaponAffixes) do
-        if EbonAffixAlertDB.tracked[WKey(name)] then
-            if EndsWith(itemName," of " .. name) then
-                return name,nil,"Weapon"
+    -- Weapon affixes are identified from their proc text rather than from the
+    -- displayed item name. Match the item's proc against Project Ebonhold's
+    -- Weapon-affix spell descriptions.
+    local procAffix = FindTrackedWeaponAffixByProc(itemLink)
+    if procAffix then
+        return procAffix,nil,"Weapon"
+    end
+end
+
+
+-- ---------------------------------------------------------------------------
+-- Weapon affix detection by proc description.
+--
+-- Project Ebonhold weapon affixes are often inherent effects on a normally
+-- named weapon (for example "Heartseeker") rather than an "of Flurry" suffix.
+-- In those cases the affix is represented by the item's proc text instead.
+--
+-- We use Ebonhold's authoritative Weapon affix spell IDs to read each affix's
+-- spell description, normalize variable wording/numbers, then compare it with
+-- "Chance on hit:" / "Chance to strike:" lines from the looted weapon tooltip.
+-- ---------------------------------------------------------------------------
+
+-- Verified original/vanilla weapon proc wording used as EAA's primary Weapon-affix signatures.
+-- Numeric tuning is intentionally omitted because multiple source weapons can share the same affix
+-- with different damage, healing, duration, rating, or percentage values.
+-- Ebonhold's live affix descriptions remain the fallback for future affixes.
+local VERIFIED_WEAPON_PROC_TEXT = {
+    ["Affliction"] = "Chance on hit: Sends a shadowy bolt at the enemy causing Shadow damage.",
+    ["Azzinoth"] = "Chance on hit: Calls forth an Ember of Azzinoth to protect you in battle for a short period of time.",
+    ["Bladestorm"] = "Chance on hit: You attack all nearby enemies causing weapon damage.",
+    ["Bloodlust"] = "Chance on hit: Increases your haste rating.",
+    ["Clarity"] = "Chance on hit: Restores mana.",
+    ["Concussion"] = "Chance on hit: Stuns target.",
+    ["Decay"] = "Chance on hit: Corrupts the target, causing damage over time.",
+    ["Devastation"] = "Chance on hit: Increases the critical strike rating of your next attack.",
+    ["Dissolution"] = "Chance on hit: Corrosive acid deals Nature damage and lowers target's armor.",
+    ["Execution"] = "Chance on hit: Wounds the target for damage.",
+    ["Ferocity"] = "Chance on hit: Increases attack power.",
+    ["Fire Blast"] = "Equip: Chance to strike your ranged target with a Fire Blast for Fire damage.",
+    ["Flame Wrath"] = "Chance on hit: Envelops the caster with a Fire shield and shoots a ring of fire dealing damage to nearby enemies.",
+    ["Flurry"] = "Chance on hit: Grants an extra attack on your next swing.",
+    ["Fortification"] = "Chance on hit: Increases Defense.",
+    ["Frailty"] = "Chance on hit: Lowers all attributes of target.",
+    ["Frost Arrow"] = "Equip: Chance to strike your target with a Frost Arrow for Frost damage.",
+    ["Fury"] = "Chance on hit: Chance on melee attack to gain Energy or Rage.",
+    ["Glaciation"] = "Chance on hit: Launches a bolt of frost at the enemy causing Frost damage and slowing movement speed.",
+    ["Hemorrhage"] = "Chance on hit: Wounds the target causing them to bleed for damage over time.",
+    ["Incineration"] = "Chance on hit: Blasts a target for Fire damage.",
+    ["Judgement"] = "Chance on hit: Smites an enemy for Holy damage.",
+    ["Julie's Blessing"] = "Chance on hit: Heals wielder over time.",
+    ["Keeper's Sting"] = "Equip: Chance to strike your ranged target with Keeper's Sting for Nature damage.",
+    ["Maiming"] = "Chance on hit: Delivers a fatal wound for damage.",
+    ["Permafrost"] = "Chance on hit: Blasts a target for Frost damage.",
+    ["Pyromancy"] = "Chance on hit: Hurls a fiery ball that causes Fire damage and additional damage over time.",
+    ["Rending"] = "Chance on hit: Punctures target's armor lowering it.",
+    ["Resurgence"] = "Chance on hit: Increases Strength.",
+    ["Shackling"] = "Chance on hit: Disarms target's weapon.",
+    ["Shahram"] = "Chance on hit: Summons the infernal spirit of Shahram.",
+    ["Speed"] = "Chance on hit: Increases run speed.",
+    ["Sulfuras"] = "Chance on hit: Hurls a fiery ball that causes Fire damage and additional damage over time.",
+    ["Thunderfury"] = "Chance on hit: Blasts your enemy with lightning, dealing Nature damage and jumping to nearby enemies. Each jump reduces Nature resistance. Your primary target is also consumed by a cyclone, slowing its attack speed.",
+    ["Undead"] = "Chance on hit: Increases attack power against Undead.",
+    ["Val'anyr"] = "Your healing spells have a chance to cause Blessing of Ancient Kings allowing your heals to shield the target absorbing damage.",
+    ["Vampirism"] = "Chance on hit: Steals life from target enemy.",
+    ["Venom"] = "Chance on hit: Poisons target for Nature damage over time.",
+    ["Vulnerability"] = "Chance on hit: Spell damage taken by target increased.",
+    ["Wilds"] = "Chance on hit: Blasts a target for Nature damage.",
+}
+
+local weaponProcDescriptions = {}
+local weaponItemScanTooltip
+local weaponSpellScanTooltip
+
+local EAA_WEAPON_EQUIP_LOCS = {
+    INVTYPE_WEAPON = true,
+    INVTYPE_2HWEAPON = true,
+    INVTYPE_WEAPONMAINHAND = true,
+    INVTYPE_WEAPONOFFHAND = true,
+    INVTYPE_HOLDABLE = true,
+    INVTYPE_RANGED = true,
+    INVTYPE_RANGEDRIGHT = true,
+    INVTYPE_THROWN = true
+}
+
+local function NormalizeWeaponProcText(text)
+    if type(text) ~= "string" then return "" end
+
+    text = string.lower(text)
+    text = string.gsub(text,"|c%x%x%x%x%x%x%x%x","")
+    text = string.gsub(text,"|r","")
+    text = string.gsub(text,"^%s+","")
+
+    -- Item tooltips normally prefix the same underlying spell text with one
+    -- of these phrases. Remove it so the item and spell descriptions compare.
+    text = string.gsub(text,"^equip%s*:%s*","")
+    text = string.gsub(text,"^chance on hit%s*:?%s*","")
+    text = string.gsub(text,"^chance to strike[^:]-:?%s*","")
+
+    -- Spell descriptions can contain variable references and numeric values
+    -- which may be resolved differently in the item tooltip.
+    text = string.gsub(text,"%$[%a]+","")
+    text = string.gsub(text,"%d+%.?%d*","")
+    text = string.gsub(text,"[%s%.,;:!?]+"," ")
+    text = string.gsub(text,"^%s+","")
+    text = string.gsub(text,"%s+$","")
+
+    return text
+end
+
+-- Produce a second comparison form that tolerates very small wording
+-- differences between the Ebonhold spell tooltip and the generated item proc.
+-- Examples include "Smite" vs "Smites" and harmless article/conjunction
+-- differences such as "an" vs "and". We keep meaningful nouns/verbs/damage
+-- school words so unrelated proc effects still do not compare equal.
+local function NormalizeWeaponProcForMatch(text)
+    text = NormalizeWeaponProcText(text)
+    if text == "" then return "" end
+
+    local words = {}
+    local word
+    for word in string.gmatch(text,"%S+") do
+        -- Ignore low-information glue words which are prone to small tooltip
+        -- wording/typo differences.
+        if word ~= "a" and word ~= "an" and word ~= "and" and word ~= "the" then
+            -- Light stemming for common third-person verb wording:
+            -- "smites" -> "smite", "increases" -> "increase", etc.
+            if string.len(word) > 4 and string.sub(word,-1) == "s" then
+                word = string.sub(word,1,-2)
+            end
+            table.insert(words,word)
+        end
+    end
+
+    return table.concat(words," ")
+end
+
+
+-- Break normalized proc text into meaningful content words. We deliberately
+-- ignore generic glue/wrapper terms which appear in Ebonhold's affix-book
+-- descriptions ("allow you to engrave...", "chance to...", etc.).
+local WEAPON_PROC_STOP_WORDS = {
+    ["a"]=true, ["an"]=true, ["and"]=true, ["the"]=true, ["to"]=true,
+    ["of"]=true, ["for"]=true, ["with"]=true, ["your"]=true, ["you"]=true,
+    ["this"]=true, ["that"]=true, ["it"]=true, ["on"]=true, ["in"]=true,
+    ["any"]=true, ["have"]=true, ["has"]=true, ["can"]=true, ["will"]=true,
+    ["chance"]=true, ["affix"]=true, ["engrave"]=true, ["engraved"]=true,
+    ["weapon"]=true, ["equippable"]=true, ["spell"]=true, ["ability"]=true,
+    ["abilities"]=true, ["scale"]=true, ["scales"]=true, ["hit"]=true
+}
+
+local function WeaponProcWordSet(text)
+    local normalized = NormalizeWeaponProcForMatch(text)
+    local set = {}
+    local count = 0
+    local word
+
+    for word in string.gmatch(normalized,"%S+") do
+        if not WEAPON_PROC_STOP_WORDS[word] and string.len(word) >= 3 then
+            if not set[word] then
+                set[word] = true
+                count = count + 1
             end
         end
     end
+
+    return set,count
+end
+
+-- Score how much of the actual item proc's meaningful vocabulary appears in
+-- the Ebonhold affix description. The item proc is intentionally the reference:
+-- Ebonhold descriptions can contain lots of extra instructional text.
+local function ScoreWeaponProcMatch(itemProcText,affixDescription)
+    local itemWords,itemCount = WeaponProcWordSet(itemProcText)
+    local descWords = WeaponProcWordSet(affixDescription)
+
+    if itemCount == 0 then return 0,0,0 end
+
+    local matched = 0
+    local word
+    for word in pairs(itemWords) do
+        if descWords[word] then
+            matched = matched + 1
+        end
+    end
+
+    return matched / itemCount, matched, itemCount
+end
+
+local function LooksLikeWeaponProcLine(text)
+    if type(text) ~= "string" then return false end
+    local lower = string.lower(text)
+    lower = string.gsub(lower,"^|c%x%x%x%x%x%x%x%x","")
+    lower = string.gsub(lower,"^%s+","")
+
+    return string.find(lower,"^chance on hit") ~= nil
+        or string.find(lower,"^chance to strike") ~= nil
+        or string.find(lower,"^equip%s*:%s*chance to strike") ~= nil
+end
+
+local function EnsureWeaponSpellScanTooltip()
+    if weaponSpellScanTooltip then return weaponSpellScanTooltip end
+
+    weaponSpellScanTooltip = CreateFrame(
+        "GameTooltip",
+        "EAAWeaponAffixSpellScanTooltip",
+        nil,
+        "GameTooltipTemplate"
+    )
+    weaponSpellScanTooltip:SetOwner(WorldFrame,"ANCHOR_NONE")
+    return weaponSpellScanTooltip
+end
+
+local function EnsureWeaponItemScanTooltip()
+    if weaponItemScanTooltip then return weaponItemScanTooltip end
+
+    weaponItemScanTooltip = CreateFrame(
+        "GameTooltip",
+        "EAAWeaponAffixItemScanTooltip",
+        nil,
+        "GameTooltipTemplate"
+    )
+    weaponItemScanTooltip:SetOwner(WorldFrame,"ANCHOR_NONE")
+    return weaponItemScanTooltip
+end
+
+local function GetWeaponAffixSpellDescription(spellId)
+    if not spellId then return nil end
+
+    local tip = EnsureWeaponSpellScanTooltip()
+    if not tip then return nil end
+
+    tip:SetOwner(WorldFrame,"ANCHOR_NONE")
+    tip:ClearLines()
+
+    local ok = pcall(function()
+        tip:SetHyperlink("spell:" .. tostring(spellId))
+    end)
+    if not ok then return nil end
+
+    local numLines = tip:NumLines() or 0
+    if numLines < 2 then return nil end
+
+    local parts = {}
+    local i
+    for i=2,numLines do
+        local lineObj = _G["EAAWeaponAffixSpellScanTooltipTextLeft" .. i]
+        local lineText = lineObj and lineObj.GetText and lineObj:GetText()
+        if lineText and lineText ~= "" then
+            table.insert(parts,lineText)
+        end
+    end
+
+    if #parts == 0 then return nil end
+    return table.concat(parts," ")
+end
+
+
+local function BuildWeaponAffixDescriptionExport()
+    local svc = _G.ExtractionService
+
+    if not svc or type(svc.learnedAffixes) ~= "table" or #svc.learnedAffixes == 0 then
+        return table.concat({
+            "=== EAA Weapon Affix Description Export ===",
+            "EAA Version: " .. tostring(GetEAAVersion()),
+            "",
+            "Project Ebonhold ExtractionService.learnedAffixes is not currently available.",
+            "Try /eaa rescanIcons, wait a moment, then run /eaa weaponAffixes again."
+        },"\n")
+    end
+
+    local entries = {}
+    local seen = {}
+    local _,affix
+
+    for _,affix in ipairs(svc.learnedAffixes) do
+        if affix and affix.weaponOnly
+            and type(affix.name) == "string"
+            and affix.name ~= ""
+            and affix.id
+            and not seen[affix.name] then
+
+            seen[affix.name] = true
+
+            local rawDescription = GetWeaponAffixSpellDescription(affix.id)
+            local normalized = NormalizeWeaponProcForMatch(rawDescription or "")
+
+            table.insert(entries,{
+                name = affix.name,
+                id = affix.id,
+                description = rawDescription or "(description unavailable)",
+                normalized = normalized ~= "" and normalized or "(unavailable)"
+            })
+        end
+    end
+
+    table.sort(entries,function(a,b)
+        return string.lower(a.name) < string.lower(b.name)
+    end)
+
+    local lines = {
+        "=== EAA Weapon Affix Description Export ===",
+        "EAA Version: " .. tostring(GetEAAVersion()),
+        "Source: Project Ebonhold ExtractionService.learnedAffixes",
+        "Weapon affixes found: " .. tostring(#entries),
+        "",
+        "Paste this entire export into ChatGPT for proc-matching review.",
+        ""
+    }
+
+    local _,entry
+    for _,entry in ipairs(entries) do
+        table.insert(lines,"[" .. entry.name .. "]")
+        table.insert(lines,"Spell ID: " .. tostring(entry.id))
+        table.insert(lines,"Description: " .. tostring(entry.description))
+        table.insert(lines,"Normalized: " .. tostring(entry.normalized))
+        local verifiedProc = VERIFIED_WEAPON_PROC_TEXT[entry.name]
+        table.insert(lines,"Verified Original Proc: " .. tostring(verifiedProc or "(not built in)"))
+        table.insert(lines,"")
+    end
+
+    return table.concat(lines,"\n")
+end
+
+local function ShowWeaponAffixDescriptionExport()
+    ShowCopyTextWindow(
+        "EAA - Weapon Affix API Descriptions",
+        BuildWeaponAffixDescriptionExport()
+    )
+end
+
+
+local verifiedWeaponProcSignatures = nil
+
+local function BuildVerifiedWeaponProcSignatures()
+    verifiedWeaponProcSignatures = {}
+
+    local affixName,procText
+    for affixName,procText in pairs(VERIFIED_WEAPON_PROC_TEXT) do
+        local normalized = NormalizeWeaponProcForMatch(procText)
+        if normalized ~= "" then
+            verifiedWeaponProcSignatures[affixName] = {
+                raw = procText,
+                normalized = normalized
+            }
+        end
+    end
+end
+
+local function FindVerifiedWeaponAffixByProcLine(lineText)
+    if not lineText or lineText == "" then return nil end
+    if not verifiedWeaponProcSignatures then
+        BuildVerifiedWeaponProcSignatures()
+    end
+
+    local bestName = nil
+    local bestScore = 0
+    local bestMatched = 0
+
+    local affixName,data
+    for affixName,data in pairs(verifiedWeaponProcSignatures) do
+        -- Only identify affixes that currently exist in Ebonhold's live/fallback
+        -- catalog AND are actually tracked by the user.
+        local catalogEntry = serverAffixCatalog[affixName]
+        if catalogEntry and catalogEntry.weaponOnly
+            and EbonAffixAlertDB.tracked[WKey(affixName)] then
+
+            local score,matched,total = ScoreWeaponProcMatch(lineText,data.raw)
+
+            if EbonAffixAlertDB.debug then
+                DEFAULT_CHAT_FRAME:AddMessage(
+                    "|cff66ccff[EAA Debug]|r Verified compare " .. tostring(affixName)
+                    .. ": " .. tostring(matched) .. "/" .. tostring(total)
+                    .. " (" .. string.format("%.0f",score * 100) .. "%)"
+                )
+            end
+
+            -- Verified source text is much stronger than the Ebonhold-description
+            -- fallback. Require at least 2 meaningful words for short vanilla
+            -- procs, and 75% of the source proc vocabulary.
+            if matched >= 2 and score >= 0.75 then
+                if score > bestScore
+                    or (score == bestScore and matched > bestMatched) then
+                    bestName = affixName
+                    bestScore = score
+                    bestMatched = matched
+                end
+            end
+        end
+    end
+
+    if EbonAffixAlertDB.debug and bestName then
+        DEFAULT_CHAT_FRAME:AddMessage(
+            "|cff66ccff[EAA Debug]|r Verified Weapon proc matched: "
+            .. tostring(bestName)
+        )
+    end
+
+    return bestName
+end
+
+local function BuildWeaponProcDescriptionCache()
+    weaponProcDescriptions = {}
+    weaponProcDescriptionsStale = false
+
+    local name, entry
+    for name,entry in pairs(serverAffixCatalog) do
+        if entry and entry.weaponOnly and entry.spellId then
+            local desc = GetWeaponAffixSpellDescription(entry.spellId)
+            local normalized = NormalizeWeaponProcText(desc)
+            local matchNormalized = NormalizeWeaponProcForMatch(desc)
+            if normalized ~= "" and string.len(normalized) >= 12 and matchNormalized ~= "" then
+                weaponProcDescriptions[name] = {
+                    raw = desc,
+                    normalized = normalized,
+                    matchNormalized = matchNormalized
+                }
+            end
+        end
+    end
+end
+
+local function IsWeaponItemLink(link)
+    if not link or not GetItemInfo then return false end
+
+    local _,_,_,_,_,_,_,_,equipLoc = GetItemInfo(link)
+    if not equipLoc then
+        -- Item info can occasionally be uncached at the instant loot chat fires.
+        -- In that case we allow the tooltip scan rather than creating a false
+        -- negative; the strict proc-line matching below still protects us.
+        return true
+    end
+
+    return EAA_WEAPON_EQUIP_LOCS[equipLoc] and true or false
+end
+
+FindTrackedWeaponAffixByProc = function(link)
+    if not link or not IsWeaponItemLink(link) then return nil end
+
+    if weaponProcDescriptionsStale then
+        BuildWeaponProcDescriptionCache()
+    end
+    if not next(weaponProcDescriptions) then
+        if EbonAffixAlertDB and EbonAffixAlertDB.debug then
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cff66ccff[EAA Debug]|r Weapon proc cache is empty; "
+                .. "Ebonhold affix spell data may not be available yet."
+            )
+        end
+        return nil
+    end
+
+    local tip = EnsureWeaponItemScanTooltip()
+    if not tip then return nil end
+
+    tip:SetOwner(WorldFrame,"ANCHOR_NONE")
+    tip:ClearLines()
+
+    local ok = pcall(function()
+        tip:SetHyperlink(link)
+    end)
+    if not ok then return nil end
+
+    local numLines = tip:NumLines() or 0
+    if numLines == 0 then return nil end
+
+    local bestName
+    local bestLength = 0
+    local i, affixName, descNorm
+
+    for i=1,numLines do
+        local lineObj = _G["EAAWeaponAffixItemScanTooltipTextLeft" .. i]
+        local lineText = lineObj and lineObj.GetText and lineObj:GetText()
+
+        local isKnownValanyrLine = lineText and string.find(
+            string.lower(lineText),
+            "blessing of ancient kings",
+            1,
+            true
+        ) ~= nil
+
+        if lineText and lineText ~= ""
+            and (LooksLikeWeaponProcLine(lineText) or isKnownValanyrLine) then
+            local lineMatchNorm = NormalizeWeaponProcForMatch(lineText)
+
+            if EbonAffixAlertDB.debug then
+                DEFAULT_CHAT_FRAME:AddMessage(
+                    "|cff66ccff[EAA Debug]|r Weapon proc line: " .. tostring(lineText)
+                )
+                DEFAULT_CHAT_FRAME:AddMessage(
+                    "|cff66ccff[EAA Debug]|r Normalized proc: " .. tostring(lineMatchNorm)
+                )
+            end
+
+            -- PRIMARY: compare against the built-in verified original weapon
+            -- proc table. This avoids relying on Ebonhold's sometimes-redesigned
+            -- extraction description.
+            local verifiedAffix = FindVerifiedWeaponAffixByProcLine(lineText)
+            if verifiedAffix then
+                return verifiedAffix
+            end
+
+            -- FALLBACK: for newly-added/future Ebonhold Weapon affixes that are
+            -- not yet present in the verified table, compare against Ebonhold's
+            -- live affix spell description using the tolerant word-overlap logic.
+            if lineMatchNorm ~= "" then
+                local bestScore = 0
+                local bestMatched = 0
+                local bestTotal = 0
+
+                for affixName,descData in pairs(weaponProcDescriptions) do
+                    if not VERIFIED_WEAPON_PROC_TEXT[affixName]
+                        and EbonAffixAlertDB.tracked[WKey(affixName)] then
+
+                        local rawDesc = descData and descData.raw or ""
+                        local score, matchedWords, totalWords =
+                            ScoreWeaponProcMatch(lineText,rawDesc)
+
+                        if EbonAffixAlertDB.debug then
+                            DEFAULT_CHAT_FRAME:AddMessage(
+                                "|cff66ccff[EAA Debug]|r Fallback compare " .. tostring(affixName)
+                                .. ": " .. tostring(matchedWords) .. "/" .. tostring(totalWords)
+                                .. " (" .. string.format("%.0f",score * 100) .. "%)"
+                            )
+                        end
+
+                        if matchedWords >= 3 and score >= 0.75 then
+                            if score > bestScore
+                                or (score == bestScore and matchedWords > bestMatched) then
+                                bestName = affixName
+                                bestScore = score
+                                bestMatched = matchedWords
+                                bestTotal = totalWords
+                                bestLength = matchedWords
+                            end
+                        end
+                    end
+                end
+
+                if EbonAffixAlertDB.debug and bestName then
+                    DEFAULT_CHAT_FRAME:AddMessage(
+                        "|cff66ccff[EAA Debug]|r Fallback Weapon affix match: "
+                        .. tostring(bestName) .. " (" .. tostring(bestMatched)
+                        .. "/" .. tostring(bestTotal) .. " words)"
+                    )
+                end
+            end
+        end
+    end
+
+    if bestName then
+        if EbonAffixAlertDB.debug then
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cff66ccff[EAA Debug]|r Weapon proc matched: "
+                .. tostring(bestName) .. " on " .. tostring(link)
+            )
+        end
+        return bestName
+    end
+
+    return nil
 end
 
 local function IsPlayerLoot(message,playerField)
@@ -2841,6 +3701,8 @@ end
 
 bagSnapshot = {}
 recentAlerts = {}
+    weaponProcDescriptions = {}
+    weaponProcDescriptionsStale = true
 local suppressBagAlertsUntil = 0
 local pendingSnapshotRefresh = nil
 
@@ -3029,7 +3891,7 @@ local function AlertForLink(link, source)
     local itemName = ExtractDisplayedItemName(link)
     if not itemName then return false end
 
-    local affixName,rank,affixType = FindTrackedAffix(itemName)
+    local affixName,rank,affixType = FindTrackedAffix(itemName,link)
     if not affixName then return false end
 
     CleanupRecentAlerts()
@@ -3063,6 +3925,96 @@ local function AlertForLink(link, source)
 
     return true
 end
+
+
+-- Newly acquired weapons can enter the bags before WoW has finished building
+-- their full tooltip. Keep a very small retry queue so proc-based Weapon affix
+-- detection gets another chance once the "Chance on hit/strike" line exists.
+local pendingWeaponRetries = {}
+local WEAPON_RETRY_DELAYS = { 0.25, 0.75, 1.50 }
+
+local function HasTrackedWeaponAffixes()
+    local _, name
+    for _,name in ipairs(weaponAffixes) do
+        if EbonAffixAlertDB.tracked[WKey(name)] then
+            return true
+        end
+    end
+    return false
+end
+
+local function QueueWeaponAffixRetry(link)
+    if not link or not EbonAffixAlertDB or not EbonAffixAlertDB.enabled then return end
+    if not HasTrackedWeaponAffixes() then return end
+    if not IsWeaponItemLink(link) then return end
+
+    -- If this item already alerted via CHAT_MSG_LOOT, BAG_UPDATE may see the
+    -- same acquisition a moment later. Do not create a redundant retry queue.
+    local itemName = ExtractDisplayedItemName(link)
+    if itemName then
+        CleanupRecentAlerts()
+        local when = recentAlerts[itemName]
+        if when and GetTime() - when < 2 then
+            return
+        end
+    end
+
+    local entry = pendingWeaponRetries[link]
+    if entry then
+        -- Keep the existing schedule; one retry chain per exact item link is enough.
+        return
+    end
+
+    pendingWeaponRetries[link] = {
+        link = link,
+        elapsed = 0,
+        nextAttempt = 1
+    }
+
+    if EbonAffixAlertDB.debug then
+        DEFAULT_CHAT_FRAME:AddMessage(
+            "|cff66ccff[EAA Debug]|r Weapon affix not identified immediately; "
+            .. "queued tooltip retries for " .. tostring(link)
+        )
+    end
+end
+
+local weaponRetryFrame = CreateFrame("Frame")
+weaponRetryFrame:SetScript("OnUpdate",function(self,delta)
+    if not next(pendingWeaponRetries) then return end
+
+    local link, entry
+    for link,entry in pairs(pendingWeaponRetries) do
+        entry.elapsed = entry.elapsed + delta
+
+        local delay = WEAPON_RETRY_DELAYS[entry.nextAttempt]
+        if delay and entry.elapsed >= delay then
+            if EbonAffixAlertDB and EbonAffixAlertDB.debug then
+                DEFAULT_CHAT_FRAME:AddMessage(
+                    "|cff66ccff[EAA Debug]|r Weapon tooltip retry "
+                    .. tostring(entry.nextAttempt) .. "/" .. tostring(#WEAPON_RETRY_DELAYS)
+                    .. ": " .. tostring(link)
+                )
+            end
+
+            local alerted = AlertForLink(link,"WEAPON_TOOLTIP_RETRY_" .. tostring(entry.nextAttempt))
+            if alerted then
+                pendingWeaponRetries[link] = nil
+            else
+                entry.nextAttempt = entry.nextAttempt + 1
+                if not WEAPON_RETRY_DELAYS[entry.nextAttempt] then
+                    if EbonAffixAlertDB and EbonAffixAlertDB.debug then
+                        DEFAULT_CHAT_FRAME:AddMessage(
+                            "|cff66ccff[EAA Debug]|r Weapon tooltip retries exhausted: "
+                            .. tostring(link)
+                        )
+                    end
+                    pendingWeaponRetries[link] = nil
+                end
+            end
+        end
+    end
+end)
 
 -- Snapshot total ownership across bags and equipped slots.
 local function CaptureBagSnapshot()
@@ -3126,7 +4078,10 @@ local function CheckBagChanges()
                 )
             end
 
-            AlertForLink(link, "INVENTORY_COUNT_INCREASE")
+            local alerted = AlertForLink(link, "INVENTORY_COUNT_INCREASE")
+            if not alerted then
+                QueueWeaponAffixRetry(link)
+            end
         end
     end
 
@@ -3161,6 +4116,7 @@ frame:SetScript("OnEvent",function(self,event,...)
         suppressBagAlertsUntil = GetTime() + 4
 
         EbonAffixAlertMainLoaded = true
+        EAAStartUpdateTracker()
 
         local loginMessageFrame = CreateFrame("Frame")
         local elapsed = 0
@@ -3334,6 +4290,7 @@ CreateInterfaceOptionsPanel = function()
         { label = "Weapon Alert", cmd = "wepalert", desc = "/eaa wepAlert - test the weapon-affix alert." },
         { label = "Loot History", cmd = "loot", desc = "/eaa loot - show or hide the Loot History window." },
         { label = "Version", cmd = "version", desc = "/eaa version - print the installed EAA version." },
+        { label = "Update Check", cmd = "updatecheck", desc = "Check the realm update channel again for a newer EAA release. 5-second cooldown.", updateCheck = true },
     }
 
     local cursorY = -260
@@ -3347,9 +4304,34 @@ CreateInterfaceOptionsPanel = function()
         button:SetText(entry.label)
         SkinEAAButton(button)
         button.command = entry.cmd
-        button:SetScript("OnClick",function(self)
-            EbonAffixAlert_HandleSlash(self.command)
-        end)
+        button.isUpdateCheck = entry.updateCheck and true or false
+
+        if button.isUpdateCheck then
+            button:SetScript("OnClick",function(self)
+                if not EAARequestManualUpdateCheck() then return end
+
+                self:Disable()
+                self.eaaCooldownRemaining = EAA_MANUAL_UPDATE_COOLDOWN
+                self:SetText("Update Check (5s)")
+                self:SetScript("OnUpdate",function(btn,elapsed)
+                    btn.eaaCooldownRemaining = btn.eaaCooldownRemaining - elapsed
+                    if btn.eaaCooldownRemaining <= 0 then
+                        btn.eaaCooldownRemaining = nil
+                        btn:SetScript("OnUpdate",nil)
+                        btn:SetText("Update Check")
+                        btn:Enable()
+                        return
+                    end
+
+                    local seconds = math.ceil(btn.eaaCooldownRemaining)
+                    btn:SetText("Update Check (" .. tostring(seconds) .. "s)")
+                end)
+            end)
+        else
+            button:SetScript("OnClick",function(self)
+                EbonAffixAlert_HandleSlash(self.command)
+            end)
+        end
 
         local desc = content:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
         desc:SetPoint("TOPLEFT",18,cursorY-30)
@@ -3457,8 +4439,20 @@ function EbonAffixAlert_HandleSlash(msg)
     elseif msg == "exportconfig" or msg == "export" then
         ShowTrackedConfigExport()
         return
+    elseif msg == "weaponaffixes" or msg == "wepaffixes" or msg == "weaponexport" then
+        ShowWeaponAffixDescriptionExport()
+        return
     elseif msg == "version" or msg == "ver" then
         PrintEAAVersion()
+        return
+    elseif msg == "update" or msg == "updatecheck" then
+        EAARequestManualUpdateCheck()
+        return
+    elseif msg == "updatestatus" then
+        EAAPrintUpdateStatus()
+        return
+    elseif msg == "updatetest" or msg == "realmtest" then
+        EAARunUpdateSelfTest()
         return
     elseif msg == "perf" then
         TogglePerfMonitor()

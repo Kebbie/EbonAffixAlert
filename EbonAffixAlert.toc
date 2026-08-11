@@ -2,7 +2,7 @@
 ## Title: Ebon Affix Alert
 ## Notes: Announces Project Ebonhold loot containing selected affixes.
 ## Author: ChatGPT
-## Version: 1.0.1
+## Version: 1.1.1
 ## SavedVariables: EbonAffixAlertDB
 ## SavedVariablesPerCharacter: EbonAffixAlertCharacterDB
 
