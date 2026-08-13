@@ -1,5 +1,17 @@
 # Ebon Affix Alert Changelog
 
+## v1.2.0 - 2026-08-13
+
+- Reworked Weapon-affix source detection around the verified Project Ebonhold extractable weapon list.
+  - Added source-weapon mapping: represented by 192 unique weapon names, covering all current Weapon affix source items.
+  - Weapon loot detection now performs a single O(1) exact-name table lookup instead of scanning item tooltips or comparing proc text.
+  - Removed the Weapon tooltip-proc matcher, proc-normalization/scoring caches, hidden item-tooltip scan, and delayed Weapon tooltip retry queue from normal loot detection.
+- Fixed Lua 5.1 scope ordering for the server affix catalogue so runtime Ebonhold rank data is used correctly.
+- Fixed Lua 5.1 scope ordering for manual update-check state so newer peer versions are recorded correctly during a manual check.
+- Removed unused bag snapshot hyperlink state and the obsolete itemLink argument from affix matching.
+- Simplified loaded-addon diagnostics to request only the GetAddOnInfo value it actually uses.
+- Kept the Weapon spell-tooltip scanner strictly as an on-demand `/eaa weaponAffixes` export helper; it remains outside normal loot detection.
+
 ## v1.1.2
 
 - Fixed issue that kept you from staying afk

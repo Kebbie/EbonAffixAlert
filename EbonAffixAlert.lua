@@ -1,4 +1,4 @@
--- Ebon Affix Alert v1.1.2
+-- Ebon Affix Alert v1.2.0
 -- WoW 3.3.5a compatible core
 
 -- General affixes: {name, fallback max rank}. Ebonhold API overrides rank when available.
@@ -82,6 +82,8 @@ local romanToNumber = {
     VII=7, VIII=8, IX=9, X=10
 }
 
+local serverAffixCatalog = {}
+
 local function GetConfiguredFallbackRank(affixName)
     local _, entry
     for _,entry in ipairs(generalAffixes) do
@@ -125,8 +127,6 @@ local lootHistory = {}
 local filterText = ""
 local trackedOnly = false
 local affixIconCache = {}
-local serverAffixCatalog = {}
-local weaponProcDescriptionsStale = true
 local iconRefreshFrame
 local perfMonitorFrame
 local perfMonitorEnabled = false
@@ -203,9 +203,9 @@ end
 
 local function GetEAAVersion()
     if GetAddOnMetadata then
-        return GetAddOnMetadata("EbonAffixAlert","Version") or "1.1.1"
+        return GetAddOnMetadata("EbonAffixAlert","Version") or "1.2.0"
     end
-    return "1.1.2"
+    return "1.2.0"
 end
 
 -- Two lightweight skins; the selected style is saved in EbonAffixAlertDB.
@@ -1078,7 +1078,7 @@ end
 -- is removed from normal chat frames immediately after joining.
 -- ---------------------------------------------------------------------------
 local EAA_UPDATE_CHANNEL = "ebonaffixalert"
-local EAA_RELEASE_VERSION = "1.1.2"
+local EAA_RELEASE_VERSION = "1.2.0"
 
 
 local eaaUpdateDebug = false
@@ -1218,6 +1218,11 @@ function SetItemRef(link,text,button,chatFrame)
         return eaaOriginalSetItemRef(link,text,button,chatFrame)
     end
 end
+
+-- Manual update-check state is declared before peer-version handling so Lua 5.1
+-- closures capture these locals rather than similarly named globals.
+local eaaManualUpdateCheckActive = false
+local eaaManualUpdateCheckFoundNewer = false
 
 local function EAAConsiderPeerVersion(verStr,sender)
     local peerInt,peerMajor = EAAParseVersion(verStr)
@@ -1386,8 +1391,6 @@ end
 local EAA_MANUAL_UPDATE_COOLDOWN = 5
 local EAA_MANUAL_UPDATE_RESULT_DELAY = 1
 local eaaLastManualUpdateCheck = -100
-local eaaManualUpdateCheckActive = false
-local eaaManualUpdateCheckFoundNewer = false
 local eaaManualUpdateCheckEndsAt = 0
 
 EAAProcessManualUpdateResult = function()
@@ -1520,7 +1523,7 @@ local function BuildLoadedAddonList()
     local items = {}
     local i
     for i=1,GetNumAddOns() do
-        local name, title, notes, enabled, loadable, reason, security = GetAddOnInfo(i)
+        local name = GetAddOnInfo(i)
         local loaded = IsAddOnLoaded and IsAddOnLoaded(i)
         if loaded then
             local version = GetAddOnMetadata and GetAddOnMetadata(i,"Version")
@@ -1690,9 +1693,6 @@ RefreshAffixIconsFromEbonhold = function()
             end
         end
     end
-
-    -- Weapon spell IDs/descriptions may have changed with the server catalogue.
-    weaponProcDescriptionsStale = true
 
     if found then
         ApplyAffixIconsToRows()
@@ -2766,12 +2766,317 @@ local function EndsWith(text,suffix)
     return string.sub(text,-string.len(suffix)) == suffix
 end
 
--- Forward declaration: FindTrackedAffix is defined before the Weapon proc
--- scanner implementation below, so both functions must share this upvalue.
-local FindTrackedWeaponAffixByProc
+-- Weapon source-item detection.
+--
+-- Project Ebonhold's extractable source whitelist currently contains 194 item IDs.
+-- Two pairs share the same displayed item name ("Fist of Stone" and
+-- "Bryntroll, the Bone Arbiter"), so name-based detection collapses that list
+-- to 192 unique exact names. Both duplicate-name pairs map to the same affix.
+--
+-- This is intentionally an O(1) table lookup. Loot detection does not build an
+-- item tooltip, scan tooltip lines, normalize proc text, or run delayed tooltip
+-- retries. The exact displayed weapon name is used as the source identity.
+local WEAPON_AFFIX_BY_ITEM_NAME = {
+    -- Affliction
+    ["Arlokk's Grasp"] = "Affliction",
+    ["Black Malice"] = "Affliction",
+    ["Black Menace"] = "Affliction",
+    ["Claw of the Shadowmancer"] = "Affliction",
+    ["Darkwater Talwar"] = "Affliction",
+    ["Doombringer"] = "Affliction",
+    ["Duskbringer"] = "Affliction",
+    ["Ebon Hand"] = "Affliction",
+    ["Ghoulfang"] = "Affliction",
+    ["Grimclaw"] = "Affliction",
+    ["Midnight Axe"] = "Affliction",
+    ["Night Reaver"] = "Affliction",
+    ["Nightblade"] = "Affliction",
+    ["Runic Darkblade"] = "Affliction",
+    ["Satyr's Lash"] = "Affliction",
+    ["Shadowblade"] = "Affliction",
+    ["Shadowfang"] = "Affliction",
+    ["Skeletal Club"] = "Affliction",
+    ["The Black Knight"] = "Affliction",
+    ["Tranquillien Flamberge"] = "Affliction",
+    ["Witchfury"] = "Affliction",
 
--- Match the displayed item suffix against the user's tracked selections.
-local function FindTrackedAffix(itemName,itemLink)
+    -- Azzinoth
+    ["Dragon's Call"] = "Azzinoth",
+    ["Shard of Azzinoth"] = "Azzinoth",
+
+    -- Bladestorm
+    ["Ravager"] = "Bladestorm",
+
+    -- Bloodlust
+    ["Blackout Truncheon"] = "Bloodlust",
+    ["Dragonmaw"] = "Bloodlust",
+    ["Dragonstrike"] = "Bloodlust",
+    ["Drakefist Hammer"] = "Bloodlust",
+    ["Empyrean Demolisher"] = "Bloodlust",
+    ["Eskhandar's Right Claw"] = "Bloodlust",
+    ["Hand of Edward the Odd"] = "Bloodlust",
+    ["Singing Crystal Axe"] = "Bloodlust",
+    ["The Bladefist"] = "Bloodlust",
+    ["The Jackhammer"] = "Bloodlust",
+
+    -- Clarity
+    ["Fist of Stone"] = "Clarity", -- item IDs 17733 and 17943
+    ["The Hammer of Destiny"] = "Clarity",
+
+    -- Concussion
+    ["Dark Iron Pulverizer"] = "Concussion",
+    ["Deep Thunder"] = "Concussion",
+    ["Hammer of the Titans"] = "Concussion",
+    ["Hurd Smasher"] = "Concussion",
+    ["Malown's Slam"] = "Concussion",
+    ["Riftmaker"] = "Concussion",
+    ["Stormherald"] = "Concussion",
+    ["The Judge's Gavel"] = "Concussion",
+
+    -- Decay
+    ["Blade of the Wretched"] = "Decay",
+    ["Ebon Hilt of Marduk"] = "Decay",
+    ["Sword of Corruption"] = "Decay",
+    ["Tainted Pierce"] = "Decay",
+
+    -- Devastation
+    ["World Breaker"] = "Devastation",
+
+    -- Dissolution
+    ["Hookfang Shanker"] = "Dissolution",
+    ["Strike of the Hydra"] = "Dissolution",
+
+    -- Execution
+    ["Blackhand Doomsaw"] = "Execution",
+    ["Bloodfist"] = "Execution",
+    ["Bloodletter Scalpel"] = "Execution",
+    ["Grim Reaper"] = "Execution",
+    ["Gut Ripper"] = "Execution",
+    ["Gutrender"] = "Execution",
+    ["Hanzo Sword"] = "Execution",
+    ["Jeklik's Crusher"] = "Execution",
+    ["Princess Theradras' Scepter"] = "Execution",
+    ["Ripsaw"] = "Execution",
+    ["The Blackrock Slicer"] = "Execution",
+    ["The Lobotomizer"] = "Execution",
+    ["The Needler"] = "Execution",
+    ["Vilerend Slicer"] = "Execution",
+
+    -- Ferocity
+    ["Heartrazor"] = "Ferocity",
+    ["Lord General's Sword"] = "Ferocity",
+
+    -- Fire Blast
+    ["Bow of Searing Arrows"] = "Fire Blast",
+    ["Galgann's Fireblaster"] = "Fire Blast",
+
+    -- Flame Wrath
+    ["Flame Wrath"] = "Flame Wrath",
+
+    -- Flurry
+    ["Blinkstrike"] = "Flurry",
+    ["Flurry Axe"] = "Flurry",
+    ["Ironfoe"] = "Flurry",
+    ["Thrash Blade"] = "Flurry",
+
+    -- Fortification
+    ["Blade of the Basilisk"] = "Fortification",
+    ["Greatsword of Forlorn Visions"] = "Fortification",
+    ["Quel'Serrar"] = "Fortification",
+    ["Sword of Zeal"] = "Fortification",
+
+    -- Frailty
+    ["Frightalon"] = "Frailty",
+    ["Stalvan's Reaper"] = "Frailty",
+    ["The Cruel Hand of Timmy"] = "Frailty",
+
+    -- Frost Arrow
+    ["Hurricane"] = "Frost Arrow",
+
+    -- Fury
+    ["Rod of the Sun King"] = "Fury",
+
+    -- Glaciation
+    ["Coldrage Dagger"] = "Glaciation",
+    ["Hammer of the Northern Wind"] = "Glaciation",
+    ["Winter's Bite"] = "Glaciation",
+
+    -- Hemorrhage
+    ["Barman Shanker"] = "Hemorrhage",
+    ["Bleeding Crescent"] = "Hemorrhage",
+    ["Bloodpike"] = "Hemorrhage",
+    ["Bloodrazor"] = "Hemorrhage",
+    ["Bloodspiller"] = "Hemorrhage",
+    ["Drakefang Butcher"] = "Hemorrhage",
+    ["Gargoyle Shredder Talons"] = "Hemorrhage",
+    ["Gatorbite Axe"] = "Hemorrhage",
+    ["Glutton's Cleaver"] = "Hemorrhage",
+    ["Gutwrencher"] = "Hemorrhage",
+    ["Hameya's Slayer"] = "Hemorrhage",
+    ["Killmaim"] = "Hemorrhage",
+    ["Silithid Ripper"] = "Hemorrhage",
+
+    -- Incineration
+    ["Alcor's Sunrazor"] = "Incineration",
+    ["Baron Charr's Sceptre"] = "Incineration",
+    ["Force of Magma"] = "Incineration",
+    ["Galgann's Firehammer"] = "Incineration",
+    ["Meteor Shard"] = "Incineration",
+    ["Perdition's Blade"] = "Incineration",
+    ["Searing Needle"] = "Incineration",
+    ["Teebu's Blazing Longsword"] = "Incineration",
+
+    -- Judgement
+    ["Shortsword of Vengeance"] = "Judgement",
+
+    -- Julie's Blessing
+    ["Julie's Dagger"] = "Julie's Blessing",
+
+    -- Keeper's Sting
+    ["Quillshooter"] = "Keeper's Sting",
+    ["Venomstrike"] = "Keeper's Sting",
+    ["Verdant Keeper's Aim"] = "Keeper's Sting",
+
+    -- Maiming
+    ["Deathblow"] = "Maiming",
+    ["Despair"] = "Maiming",
+    ["Diabolic Skiver"] = "Maiming",
+    ["Pendulum of Doom"] = "Maiming",
+    ["Vis'kag the Bloodletter"] = "Maiming",
+
+    -- Permafrost
+    ["Bonechill Hammer"] = "Permafrost",
+    ["Chillpike"] = "Permafrost",
+    ["Cobalt Crusher"] = "Permafrost",
+    ["Darrowspike"] = "Permafrost",
+    ["Edge of Winter"] = "Permafrost",
+    ["Glacial Blade"] = "Permafrost",
+    ["Glacial Stone"] = "Permafrost",
+    ["Shiver Blade"] = "Permafrost",
+    ["Sliverblade"] = "Permafrost",
+
+    -- Pyromancy
+    ["Burning War Axe"] = "Pyromancy",
+    ["Excavator's Brand"] = "Pyromancy",
+    ["Firebreather"] = "Pyromancy",
+    ["Searing Blade"] = "Pyromancy",
+    ["Smoldering Claw"] = "Pyromancy",
+    ["Sulfuron Hammer"] = "Pyromancy",
+    ["Taran Icebreaker"] = "Pyromancy",
+    ["Volcanic Hammer"] = "Pyromancy",
+
+    -- Rending
+    ["Annihilator"] = "Rending",
+    ["Bashguuder"] = "Rending",
+    ["Dark Iron Sunderer"] = "Rending",
+    ["Rivenspike"] = "Rending",
+    ["Vibroblade"] = "Rending",
+
+    -- Resurgence
+    ["Arcanite Champion"] = "Resurgence",
+    ["Destiny"] = "Resurgence",
+    ["Khorium Champion"] = "Resurgence",
+    ["The Untamed Blade"] = "Resurgence",
+
+    -- Shackling
+    ["Shoni's Disarming Tool"] = "Shackling",
+    ["The Shatterer"] = "Shackling",
+
+    -- Shahram
+    ["Blackblade of Shahram"] = "Shahram",
+
+    -- Speed
+    ["Sprinter's Sword"] = "Speed",
+
+    -- Sulfuras
+    ["Sulfuras, Hand of Ragnaros"] = "Sulfuras",
+
+    -- Thunderfury
+    ["Thunderfury, Blessed Blade of the Windseeker"] = "Thunderfury",
+
+    -- Twin Shot
+    ["Thori'dal, the Stars' Fury"] = "Twin Shot",
+
+    -- Undead
+    ["Argent Avenger"] = "Undead",
+
+    -- Val'Anyr
+    ["Val'anyr, Hammer of Ancient Kings"] = "Val'Anyr",
+
+    -- Vampirism
+    ["Ancient Hakkari Manslayer"] = "Vampirism",
+    ["Blade of Unquenched Thirst"] = "Vampirism",
+    ["Bryntroll, the Bone Arbiter"] = "Vampirism", -- item IDs 50415 and 50709
+    ["Demonfork"] = "Vampirism",
+    ["Fist of the Damned"] = "Vampirism",
+    ["Glaive of the Pit"] = "Vampirism",
+    ["Neretzek, The Blood Drinker"] = "Vampirism",
+    ["Revenger"] = "Vampirism",
+    ["Shadowstrike"] = "Vampirism",
+    ["Wraith Scythe"] = "Vampirism",
+
+    -- Venom
+    ["Bite of Serra'kis"] = "Venom",
+    ["Blackvenom Blade"] = "Venom",
+    ["Blight"] = "Venom",
+    ["Claw of Celebras"] = "Venom",
+    ["Gravestone War Axe"] = "Venom",
+    ["Ichor Spitter"] = "Venom",
+    ["Keris of Zul'Serak"] = "Venom",
+    ["Naraxis' Fang"] = "Venom",
+    ["Poison-tipped Bone Spear"] = "Venom",
+    ["Scorpion Sting"] = "Venom",
+    ["Serpent Slicer"] = "Venom",
+    ["Serpent's Kiss"] = "Venom",
+    ["Stinging Viper"] = "Venom",
+    ["Venom Web Fang"] = "Venom",
+    ["Venomspitter"] = "Venom",
+    ["Windreaper"] = "Venom",
+    ["Wyvern Tailspike"] = "Venom",
+
+    -- Vulnerability
+    ["Nightfall"] = "Vulnerability",
+
+    -- Wilds
+    ["Axe of the Deep Woods"] = "Wilds",
+    ["Electrified Dagger"] = "Wilds",
+    ["Electrocutioner Leg"] = "Wilds",
+    ["Emerald Dragonfang"] = "Wilds",
+    ["Gryphon Rider's Stormhammer"] = "Wilds",
+    ["Kalimdor's Revenge"] = "Wilds",
+    ["Linken's Sword of Mastery"] = "Wilds",
+    ["Phytoblade"] = "Wilds",
+    ["Shimmering Platinum Warhammer"] = "Wilds",
+    ["Supercharger Battle Axe"] = "Wilds",
+    ["The Ziggler"] = "Wilds",
+    ["Zulian Slicer"] = "Wilds",
+}
+
+local function FindTrackedWeaponAffixByItemName(itemName)
+    if not itemName or itemName == "" then return nil end
+
+    local affixName = WEAPON_AFFIX_BY_ITEM_NAME[itemName]
+    if not affixName then return nil end
+
+    if EbonAffixAlertDB
+        and EbonAffixAlertDB.tracked
+        and EbonAffixAlertDB.tracked[WKey(affixName)] then
+
+        if EbonAffixAlertDB.debug then
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cff66ccff[EAA Debug]|r Weapon source-name match: "
+                .. tostring(itemName) .. " -> " .. tostring(affixName)
+            )
+        end
+        return affixName
+    end
+
+    return nil
+end
+
+-- Match the displayed item suffix against the user's tracked General selections,
+-- then use the exact source-weapon name table for Weapon affixes.
+local function FindTrackedAffix(itemName)
     local _, entry, rank, name
 
     for _,entry in ipairs(generalAffixes) do
@@ -2795,204 +3100,17 @@ local function FindTrackedAffix(itemName,itemLink)
         end
     end
 
-    -- Weapon affixes are identified from their proc text rather than from the
-    -- displayed item name. Match the item's proc against Project Ebonhold's
-    -- Weapon-affix spell descriptions.
-    local procAffix = FindTrackedWeaponAffixByProc(itemLink)
-    if procAffix then
-        return procAffix,nil,"Weapon"
+    local weaponAffix = FindTrackedWeaponAffixByItemName(itemName)
+    if weaponAffix then
+        return weaponAffix,nil,"Weapon"
     end
 end
 
 
--- ---------------------------------------------------------------------------
--- Weapon affix detection by proc description.
---
--- Project Ebonhold weapon affixes are often inherent effects on a normally
--- named weapon (for example "Heartseeker") rather than an "of Flurry" suffix.
--- In those cases the affix is represented by the item's proc text instead.
---
--- We use Ebonhold's authoritative Weapon affix spell IDs to read each affix's
--- spell description, normalize variable wording/numbers, then compare it with
--- "Chance on hit:" / "Chance to strike:" lines from the looted weapon tooltip.
--- ---------------------------------------------------------------------------
-
--- Verified original/vanilla weapon proc wording used as EAA's primary Weapon-affix signatures.
--- Numeric tuning is intentionally omitted because multiple source weapons can share the same affix
--- with different damage, healing, duration, rating, or percentage values.
--- Ebonhold's live affix descriptions remain the fallback for future affixes.
-local VERIFIED_WEAPON_PROC_TEXT = {
-    ["Affliction"] = "Chance on hit: Sends a shadowy bolt at the enemy causing Shadow damage.",
-    ["Azzinoth"] = "Chance on hit: Calls forth an Ember of Azzinoth to protect you in battle for a short period of time.",
-    ["Bladestorm"] = "Chance on hit: You attack all nearby enemies causing weapon damage.",
-    ["Bloodlust"] = "Chance on hit: Increases your haste rating.",
-    ["Clarity"] = "Chance on hit: Restores mana.",
-    ["Concussion"] = "Chance on hit: Stuns target.",
-    ["Decay"] = "Chance on hit: Corrupts the target, causing damage over time.",
-    ["Devastation"] = "Chance on hit: Increases the critical strike rating of your next attack.",
-    ["Dissolution"] = "Chance on hit: Corrosive acid deals Nature damage and lowers target's armor.",
-    ["Execution"] = "Chance on hit: Wounds the target for damage.",
-    ["Ferocity"] = "Chance on hit: Increases attack power.",
-    ["Fire Blast"] = "Equip: Chance to strike your ranged target with a Fire Blast for Fire damage.",
-    ["Flame Wrath"] = "Chance on hit: Envelops the caster with a Fire shield and shoots a ring of fire dealing damage to nearby enemies.",
-    ["Flurry"] = "Chance on hit: Grants an extra attack on your next swing.",
-    ["Fortification"] = "Chance on hit: Increases Defense.",
-    ["Frailty"] = "Chance on hit: Lowers all attributes of target.",
-    ["Frost Arrow"] = "Equip: Chance to strike your target with a Frost Arrow for Frost damage.",
-    ["Fury"] = "Chance on hit: Chance on melee attack to gain Energy or Rage.",
-    ["Glaciation"] = "Chance on hit: Launches a bolt of frost at the enemy causing Frost damage and slowing movement speed.",
-    ["Hemorrhage"] = "Chance on hit: Wounds the target causing them to bleed for damage over time.",
-    ["Incineration"] = "Chance on hit: Blasts a target for Fire damage.",
-    ["Judgement"] = "Chance on hit: Smites an enemy for Holy damage.",
-    ["Julie's Blessing"] = "Chance on hit: Heals wielder over time.",
-    ["Keeper's Sting"] = "Equip: Chance to strike your ranged target with Keeper's Sting for Nature damage.",
-    ["Maiming"] = "Chance on hit: Delivers a fatal wound for damage.",
-    ["Permafrost"] = "Chance on hit: Blasts a target for Frost damage.",
-    ["Pyromancy"] = "Chance on hit: Hurls a fiery ball that causes Fire damage and additional damage over time.",
-    ["Rending"] = "Chance on hit: Punctures target's armor lowering it.",
-    ["Resurgence"] = "Chance on hit: Increases Strength.",
-    ["Shackling"] = "Chance on hit: Disarms target's weapon.",
-    ["Shahram"] = "Chance on hit: Summons the infernal spirit of Shahram.",
-    ["Speed"] = "Chance on hit: Increases run speed.",
-    ["Sulfuras"] = "Chance on hit: Hurls a fiery ball that causes Fire damage and additional damage over time.",
-    ["Thunderfury"] = "Chance on hit: Blasts your enemy with lightning, dealing Nature damage and jumping to nearby enemies. Each jump reduces Nature resistance. Your primary target is also consumed by a cyclone, slowing its attack speed.",
-    ["Undead"] = "Chance on hit: Increases attack power against Undead.",
-    ["Val'anyr"] = "Your healing spells have a chance to cause Blessing of Ancient Kings allowing your heals to shield the target absorbing damage.",
-    ["Vampirism"] = "Chance on hit: Steals life from target enemy.",
-    ["Venom"] = "Chance on hit: Poisons target for Nature damage over time.",
-    ["Vulnerability"] = "Chance on hit: Spell damage taken by target increased.",
-    ["Wilds"] = "Chance on hit: Blasts a target for Nature damage.",
-}
-
-local weaponProcDescriptions = {}
-local weaponItemScanTooltip
+-- `/eaa weaponAffixes` remains a support/export command. Spell descriptions are
+-- fetched only when the user explicitly invokes the command; they are never
+-- used by normal loot detection.
 local weaponSpellScanTooltip
-
-local EAA_WEAPON_EQUIP_LOCS = {
-    INVTYPE_WEAPON = true,
-    INVTYPE_2HWEAPON = true,
-    INVTYPE_WEAPONMAINHAND = true,
-    INVTYPE_WEAPONOFFHAND = true,
-    INVTYPE_HOLDABLE = true,
-    INVTYPE_RANGED = true,
-    INVTYPE_RANGEDRIGHT = true,
-    INVTYPE_THROWN = true
-}
-
-local function NormalizeWeaponProcText(text)
-    if type(text) ~= "string" then return "" end
-
-    text = string.lower(text)
-    text = string.gsub(text,"|c%x%x%x%x%x%x%x%x","")
-    text = string.gsub(text,"|r","")
-    text = string.gsub(text,"^%s+","")
-
-    -- Item tooltips normally prefix the same underlying spell text with one
-    -- of these phrases. Remove it so the item and spell descriptions compare.
-    text = string.gsub(text,"^equip%s*:%s*","")
-    text = string.gsub(text,"^chance on hit%s*:?%s*","")
-    text = string.gsub(text,"^chance to strike[^:]-:?%s*","")
-
-    -- Spell descriptions can contain variable references and numeric values
-    -- which may be resolved differently in the item tooltip.
-    text = string.gsub(text,"%$[%a]+","")
-    text = string.gsub(text,"%d+%.?%d*","")
-    text = string.gsub(text,"[%s%.,;:!?]+"," ")
-    text = string.gsub(text,"^%s+","")
-    text = string.gsub(text,"%s+$","")
-
-    return text
-end
-
--- Produce a second comparison form that tolerates very small wording
--- differences between the Ebonhold spell tooltip and the generated item proc.
--- Examples include "Smite" vs "Smites" and harmless article/conjunction
--- differences such as "an" vs "and". We keep meaningful nouns/verbs/damage
--- school words so unrelated proc effects still do not compare equal.
-local function NormalizeWeaponProcForMatch(text)
-    text = NormalizeWeaponProcText(text)
-    if text == "" then return "" end
-
-    local words = {}
-    local word
-    for word in string.gmatch(text,"%S+") do
-        -- Ignore low-information glue words which are prone to small tooltip
-        -- wording/typo differences.
-        if word ~= "a" and word ~= "an" and word ~= "and" and word ~= "the" then
-            -- Light stemming for common third-person verb wording:
-            -- "smites" -> "smite", "increases" -> "increase", etc.
-            if string.len(word) > 4 and string.sub(word,-1) == "s" then
-                word = string.sub(word,1,-2)
-            end
-            table.insert(words,word)
-        end
-    end
-
-    return table.concat(words," ")
-end
-
-
--- Break normalized proc text into meaningful content words. We deliberately
--- ignore generic glue/wrapper terms which appear in Ebonhold's affix-book
--- descriptions ("allow you to engrave...", "chance to...", etc.).
-local WEAPON_PROC_STOP_WORDS = {
-    ["a"]=true, ["an"]=true, ["and"]=true, ["the"]=true, ["to"]=true,
-    ["of"]=true, ["for"]=true, ["with"]=true, ["your"]=true, ["you"]=true,
-    ["this"]=true, ["that"]=true, ["it"]=true, ["on"]=true, ["in"]=true,
-    ["any"]=true, ["have"]=true, ["has"]=true, ["can"]=true, ["will"]=true,
-    ["chance"]=true, ["affix"]=true, ["engrave"]=true, ["engraved"]=true,
-    ["weapon"]=true, ["equippable"]=true, ["spell"]=true, ["ability"]=true,
-    ["abilities"]=true, ["scale"]=true, ["scales"]=true, ["hit"]=true
-}
-
-local function WeaponProcWordSet(text)
-    local normalized = NormalizeWeaponProcForMatch(text)
-    local set = {}
-    local count = 0
-    local word
-
-    for word in string.gmatch(normalized,"%S+") do
-        if not WEAPON_PROC_STOP_WORDS[word] and string.len(word) >= 3 then
-            if not set[word] then
-                set[word] = true
-                count = count + 1
-            end
-        end
-    end
-
-    return set,count
-end
-
--- Score how much of the actual item proc's meaningful vocabulary appears in
--- the Ebonhold affix description. The item proc is intentionally the reference:
--- Ebonhold descriptions can contain lots of extra instructional text.
-local function ScoreWeaponProcMatch(itemProcText,affixDescription)
-    local itemWords,itemCount = WeaponProcWordSet(itemProcText)
-    local descWords = WeaponProcWordSet(affixDescription)
-
-    if itemCount == 0 then return 0,0,0 end
-
-    local matched = 0
-    local word
-    for word in pairs(itemWords) do
-        if descWords[word] then
-            matched = matched + 1
-        end
-    end
-
-    return matched / itemCount, matched, itemCount
-end
-
-local function LooksLikeWeaponProcLine(text)
-    if type(text) ~= "string" then return false end
-    local lower = string.lower(text)
-    lower = string.gsub(lower,"^|c%x%x%x%x%x%x%x%x","")
-    lower = string.gsub(lower,"^%s+","")
-
-    return string.find(lower,"^chance on hit") ~= nil
-        or string.find(lower,"^chance to strike") ~= nil
-        or string.find(lower,"^equip%s*:%s*chance to strike") ~= nil
-end
 
 local function EnsureWeaponSpellScanTooltip()
     if weaponSpellScanTooltip then return weaponSpellScanTooltip end
@@ -3005,19 +3123,6 @@ local function EnsureWeaponSpellScanTooltip()
     )
     weaponSpellScanTooltip:SetOwner(WorldFrame,"ANCHOR_NONE")
     return weaponSpellScanTooltip
-end
-
-local function EnsureWeaponItemScanTooltip()
-    if weaponItemScanTooltip then return weaponItemScanTooltip end
-
-    weaponItemScanTooltip = CreateFrame(
-        "GameTooltip",
-        "EAAWeaponAffixItemScanTooltip",
-        nil,
-        "GameTooltipTemplate"
-    )
-    weaponItemScanTooltip:SetOwner(WorldFrame,"ANCHOR_NONE")
-    return weaponItemScanTooltip
 end
 
 local function GetWeaponAffixSpellDescription(spellId)
@@ -3051,9 +3156,26 @@ local function GetWeaponAffixSpellDescription(spellId)
     return table.concat(parts," ")
 end
 
+local function BuildWeaponSourceNamesByAffix()
+    local grouped = {}
+    local itemName,affixName
+    for itemName,affixName in pairs(WEAPON_AFFIX_BY_ITEM_NAME) do
+        grouped[affixName] = grouped[affixName] or {}
+        table.insert(grouped[affixName],itemName)
+    end
+
+    local _,names
+    for _,names in pairs(grouped) do
+        table.sort(names,function(a,b)
+            return string.lower(a) < string.lower(b)
+        end)
+    end
+    return grouped
+end
 
 local function BuildWeaponAffixDescriptionExport()
     local svc = _G.ExtractionService
+    local groupedSources = BuildWeaponSourceNamesByAffix()
 
     if not svc or type(svc.learnedAffixes) ~= "table" or #svc.learnedAffixes == 0 then
         return table.concat({
@@ -3061,6 +3183,7 @@ local function BuildWeaponAffixDescriptionExport()
             "EAA Version: " .. tostring(GetEAAVersion()),
             "",
             "Project Ebonhold ExtractionService.learnedAffixes is not currently available.",
+            "Hardcoded source-weapon names: " .. tostring(192),
             "Try /eaa rescanIcons, wait a moment, then run /eaa weaponAffixes again."
         },"\n")
     end
@@ -3077,15 +3200,11 @@ local function BuildWeaponAffixDescriptionExport()
             and not seen[affix.name] then
 
             seen[affix.name] = true
-
-            local rawDescription = GetWeaponAffixSpellDescription(affix.id)
-            local normalized = NormalizeWeaponProcForMatch(rawDescription or "")
-
             table.insert(entries,{
                 name = affix.name,
                 id = affix.id,
-                description = rawDescription or "(description unavailable)",
-                normalized = normalized ~= "" and normalized or "(unavailable)"
+                description = GetWeaponAffixSpellDescription(affix.id)
+                    or "(description unavailable)"
             })
         end
     end
@@ -3097,21 +3216,22 @@ local function BuildWeaponAffixDescriptionExport()
     local lines = {
         "=== EAA Weapon Affix Description Export ===",
         "EAA Version: " .. tostring(GetEAAVersion()),
-        "Source: Project Ebonhold ExtractionService.learnedAffixes",
+        "Source: Project Ebonhold ExtractionService.learnedAffixes + EAA source-name table",
         "Weapon affixes found: " .. tostring(#entries),
+        "Hardcoded source-weapon names: " .. tostring(192),
         "",
-        "Paste this entire export into ChatGPT for proc-matching review.",
+        "Normal loot detection uses exact source-weapon name lookup; tooltip proc matching is disabled.",
         ""
     }
 
     local _,entry
     for _,entry in ipairs(entries) do
+        local sourceNames = groupedSources[entry.name] or {}
         table.insert(lines,"[" .. entry.name .. "]")
         table.insert(lines,"Spell ID: " .. tostring(entry.id))
         table.insert(lines,"Description: " .. tostring(entry.description))
-        table.insert(lines,"Normalized: " .. tostring(entry.normalized))
-        local verifiedProc = VERIFIED_WEAPON_PROC_TEXT[entry.name]
-        table.insert(lines,"Verified Original Proc: " .. tostring(verifiedProc or "(not built in)"))
+        table.insert(lines,"Source weapons (" .. tostring(#sourceNames) .. "): "
+            .. (#sourceNames > 0 and table.concat(sourceNames,", ") or "(none built in)"))
         table.insert(lines,"")
     end
 
@@ -3125,237 +3245,6 @@ local function ShowWeaponAffixDescriptionExport()
     )
 end
 
-
-local verifiedWeaponProcSignatures = nil
-
-local function BuildVerifiedWeaponProcSignatures()
-    verifiedWeaponProcSignatures = {}
-
-    local affixName,procText
-    for affixName,procText in pairs(VERIFIED_WEAPON_PROC_TEXT) do
-        local normalized = NormalizeWeaponProcForMatch(procText)
-        if normalized ~= "" then
-            verifiedWeaponProcSignatures[affixName] = {
-                raw = procText,
-                normalized = normalized
-            }
-        end
-    end
-end
-
-local function FindVerifiedWeaponAffixByProcLine(lineText)
-    if not lineText or lineText == "" then return nil end
-    if not verifiedWeaponProcSignatures then
-        BuildVerifiedWeaponProcSignatures()
-    end
-
-    local bestName = nil
-    local bestScore = 0
-    local bestMatched = 0
-
-    local affixName,data
-    for affixName,data in pairs(verifiedWeaponProcSignatures) do
-        -- Only identify affixes that currently exist in Ebonhold's live/fallback
-        -- catalog AND are actually tracked by the user.
-        local catalogEntry = serverAffixCatalog[affixName]
-        if catalogEntry and catalogEntry.weaponOnly
-            and EbonAffixAlertDB.tracked[WKey(affixName)] then
-
-            local score,matched,total = ScoreWeaponProcMatch(lineText,data.raw)
-
-            if EbonAffixAlertDB.debug then
-                DEFAULT_CHAT_FRAME:AddMessage(
-                    "|cff66ccff[EAA Debug]|r Verified compare " .. tostring(affixName)
-                    .. ": " .. tostring(matched) .. "/" .. tostring(total)
-                    .. " (" .. string.format("%.0f",score * 100) .. "%)"
-                )
-            end
-
-            -- Verified source text is much stronger than the Ebonhold-description
-            -- fallback. Require at least 2 meaningful words for short vanilla
-            -- procs, and 75% of the source proc vocabulary.
-            if matched >= 2 and score >= 0.75 then
-                if score > bestScore
-                    or (score == bestScore and matched > bestMatched) then
-                    bestName = affixName
-                    bestScore = score
-                    bestMatched = matched
-                end
-            end
-        end
-    end
-
-    if EbonAffixAlertDB.debug and bestName then
-        DEFAULT_CHAT_FRAME:AddMessage(
-            "|cff66ccff[EAA Debug]|r Verified Weapon proc matched: "
-            .. tostring(bestName)
-        )
-    end
-
-    return bestName
-end
-
-local function BuildWeaponProcDescriptionCache()
-    weaponProcDescriptions = {}
-    weaponProcDescriptionsStale = false
-
-    local name, entry
-    for name,entry in pairs(serverAffixCatalog) do
-        if entry and entry.weaponOnly and entry.spellId then
-            local desc = GetWeaponAffixSpellDescription(entry.spellId)
-            local normalized = NormalizeWeaponProcText(desc)
-            local matchNormalized = NormalizeWeaponProcForMatch(desc)
-            if normalized ~= "" and string.len(normalized) >= 12 and matchNormalized ~= "" then
-                weaponProcDescriptions[name] = {
-                    raw = desc,
-                    normalized = normalized,
-                    matchNormalized = matchNormalized
-                }
-            end
-        end
-    end
-end
-
-local function IsWeaponItemLink(link)
-    if not link or not GetItemInfo then return false end
-
-    local _,_,_,_,_,_,_,_,equipLoc = GetItemInfo(link)
-    if not equipLoc then
-        -- Item info can occasionally be uncached at the instant loot chat fires.
-        -- In that case we allow the tooltip scan rather than creating a false
-        -- negative; the strict proc-line matching below still protects us.
-        return true
-    end
-
-    return EAA_WEAPON_EQUIP_LOCS[equipLoc] and true or false
-end
-
-FindTrackedWeaponAffixByProc = function(link)
-    if not link or not IsWeaponItemLink(link) then return nil end
-
-    if weaponProcDescriptionsStale then
-        BuildWeaponProcDescriptionCache()
-    end
-    if not next(weaponProcDescriptions) then
-        if EbonAffixAlertDB and EbonAffixAlertDB.debug then
-            DEFAULT_CHAT_FRAME:AddMessage(
-                "|cff66ccff[EAA Debug]|r Weapon proc cache is empty; "
-                .. "Ebonhold affix spell data may not be available yet."
-            )
-        end
-        return nil
-    end
-
-    local tip = EnsureWeaponItemScanTooltip()
-    if not tip then return nil end
-
-    tip:SetOwner(WorldFrame,"ANCHOR_NONE")
-    tip:ClearLines()
-
-    local ok = pcall(function()
-        tip:SetHyperlink(link)
-    end)
-    if not ok then return nil end
-
-    local numLines = tip:NumLines() or 0
-    if numLines == 0 then return nil end
-
-    local bestName
-    local bestLength = 0
-    local i, affixName, descNorm
-
-    for i=1,numLines do
-        local lineObj = _G["EAAWeaponAffixItemScanTooltipTextLeft" .. i]
-        local lineText = lineObj and lineObj.GetText and lineObj:GetText()
-
-        local isKnownValanyrLine = lineText and string.find(
-            string.lower(lineText),
-            "blessing of ancient kings",
-            1,
-            true
-        ) ~= nil
-
-        if lineText and lineText ~= ""
-            and (LooksLikeWeaponProcLine(lineText) or isKnownValanyrLine) then
-            local lineMatchNorm = NormalizeWeaponProcForMatch(lineText)
-
-            if EbonAffixAlertDB.debug then
-                DEFAULT_CHAT_FRAME:AddMessage(
-                    "|cff66ccff[EAA Debug]|r Weapon proc line: " .. tostring(lineText)
-                )
-                DEFAULT_CHAT_FRAME:AddMessage(
-                    "|cff66ccff[EAA Debug]|r Normalized proc: " .. tostring(lineMatchNorm)
-                )
-            end
-
-            -- PRIMARY: compare against the built-in verified original weapon
-            -- proc table. This avoids relying on Ebonhold's sometimes-redesigned
-            -- extraction description.
-            local verifiedAffix = FindVerifiedWeaponAffixByProcLine(lineText)
-            if verifiedAffix then
-                return verifiedAffix
-            end
-
-            -- FALLBACK: for newly-added/future Ebonhold Weapon affixes that are
-            -- not yet present in the verified table, compare against Ebonhold's
-            -- live affix spell description using the tolerant word-overlap logic.
-            if lineMatchNorm ~= "" then
-                local bestScore = 0
-                local bestMatched = 0
-                local bestTotal = 0
-
-                for affixName,descData in pairs(weaponProcDescriptions) do
-                    if not VERIFIED_WEAPON_PROC_TEXT[affixName]
-                        and EbonAffixAlertDB.tracked[WKey(affixName)] then
-
-                        local rawDesc = descData and descData.raw or ""
-                        local score, matchedWords, totalWords =
-                            ScoreWeaponProcMatch(lineText,rawDesc)
-
-                        if EbonAffixAlertDB.debug then
-                            DEFAULT_CHAT_FRAME:AddMessage(
-                                "|cff66ccff[EAA Debug]|r Fallback compare " .. tostring(affixName)
-                                .. ": " .. tostring(matchedWords) .. "/" .. tostring(totalWords)
-                                .. " (" .. string.format("%.0f",score * 100) .. "%)"
-                            )
-                        end
-
-                        if matchedWords >= 3 and score >= 0.75 then
-                            if score > bestScore
-                                or (score == bestScore and matchedWords > bestMatched) then
-                                bestName = affixName
-                                bestScore = score
-                                bestMatched = matchedWords
-                                bestTotal = totalWords
-                                bestLength = matchedWords
-                            end
-                        end
-                    end
-                end
-
-                if EbonAffixAlertDB.debug and bestName then
-                    DEFAULT_CHAT_FRAME:AddMessage(
-                        "|cff66ccff[EAA Debug]|r Fallback Weapon affix match: "
-                        .. tostring(bestName) .. " (" .. tostring(bestMatched)
-                        .. "/" .. tostring(bestTotal) .. " words)"
-                    )
-                end
-            end
-        end
-    end
-
-    if bestName then
-        if EbonAffixAlertDB.debug then
-            DEFAULT_CHAT_FRAME:AddMessage(
-                "|cff66ccff[EAA Debug]|r Weapon proc matched: "
-                .. tostring(bestName) .. " on " .. tostring(link)
-            )
-        end
-        return bestName
-    end
-
-    return nil
-end
 
 local function IsPlayerLoot(message,playerField)
     local playerName = UnitName("player")
@@ -3777,8 +3666,6 @@ end
 
 bagSnapshot = {}
 recentAlerts = {}
-    weaponProcDescriptions = {}
-    weaponProcDescriptionsStale = true
 local suppressBagAlertsUntil = 0
 local pendingSnapshotRefresh = nil
 
@@ -3967,7 +3854,7 @@ local function AlertForLink(link, source)
     local itemName = ExtractDisplayedItemName(link)
     if not itemName then return false end
 
-    local affixName,rank,affixType = FindTrackedAffix(itemName,link)
+    local affixName,rank,affixType = FindTrackedAffix(itemName)
     if not affixName then return false end
 
     CleanupRecentAlerts()
@@ -4003,94 +3890,7 @@ local function AlertForLink(link, source)
 end
 
 
--- Newly acquired weapons can enter the bags before WoW has finished building
--- their full tooltip. Keep a very small retry queue so proc-based Weapon affix
--- detection gets another chance once the "Chance on hit/strike" line exists.
-local pendingWeaponRetries = {}
-local WEAPON_RETRY_DELAYS = { 0.25, 0.75, 1.50 }
-
-local function HasTrackedWeaponAffixes()
-    local _, name
-    for _,name in ipairs(weaponAffixes) do
-        if EbonAffixAlertDB.tracked[WKey(name)] then
-            return true
-        end
-    end
-    return false
-end
-
-local function QueueWeaponAffixRetry(link)
-    if not link or not EbonAffixAlertDB or not EbonAffixAlertDB.enabled then return end
-    if not HasTrackedWeaponAffixes() then return end
-    if not IsWeaponItemLink(link) then return end
-
-    -- If this item already alerted via CHAT_MSG_LOOT, BAG_UPDATE may see the
-    -- same acquisition a moment later. Do not create a redundant retry queue.
-    local itemName = ExtractDisplayedItemName(link)
-    if itemName then
-        CleanupRecentAlerts()
-        local when = recentAlerts[itemName]
-        if when and GetTime() - when < 2 then
-            return
-        end
-    end
-
-    local entry = pendingWeaponRetries[link]
-    if entry then
-        -- Keep the existing schedule; one retry chain per exact item link is enough.
-        return
-    end
-
-    pendingWeaponRetries[link] = {
-        link = link,
-        elapsed = 0,
-        nextAttempt = 1
-    }
-
-    if EbonAffixAlertDB.debug then
-        DEFAULT_CHAT_FRAME:AddMessage(
-            "|cff66ccff[EAA Debug]|r Weapon affix not identified immediately; "
-            .. "queued tooltip retries for " .. tostring(link)
-        )
-    end
-end
-
-local weaponRetryFrame = CreateFrame("Frame")
-weaponRetryFrame:SetScript("OnUpdate",function(self,delta)
-    if not next(pendingWeaponRetries) then return end
-
-    local link, entry
-    for link,entry in pairs(pendingWeaponRetries) do
-        entry.elapsed = entry.elapsed + delta
-
-        local delay = WEAPON_RETRY_DELAYS[entry.nextAttempt]
-        if delay and entry.elapsed >= delay then
-            if EbonAffixAlertDB and EbonAffixAlertDB.debug then
-                DEFAULT_CHAT_FRAME:AddMessage(
-                    "|cff66ccff[EAA Debug]|r Weapon tooltip retry "
-                    .. tostring(entry.nextAttempt) .. "/" .. tostring(#WEAPON_RETRY_DELAYS)
-                    .. ": " .. tostring(link)
-                )
-            end
-
-            local alerted = AlertForLink(link,"WEAPON_TOOLTIP_RETRY_" .. tostring(entry.nextAttempt))
-            if alerted then
-                pendingWeaponRetries[link] = nil
-            else
-                entry.nextAttempt = entry.nextAttempt + 1
-                if not WEAPON_RETRY_DELAYS[entry.nextAttempt] then
-                    if EbonAffixAlertDB and EbonAffixAlertDB.debug then
-                        DEFAULT_CHAT_FRAME:AddMessage(
-                            "|cff66ccff[EAA Debug]|r Weapon tooltip retries exhausted: "
-                            .. tostring(link)
-                        )
-                    end
-                    pendingWeaponRetries[link] = nil
-                end
-            end
-        end
-    end
-end)
+-- Weapon source-name lookup is immediate; no tooltip retry queue is required.
 
 -- Snapshot total ownership across bags and equipped slots.
 --
@@ -4136,7 +3936,7 @@ local function AddSnapshotItem(snapshot,links,link,count)
 
     snapshot[key] = (snapshot[key] or 0) + (count or 1)
 
-    -- Keep one current hyperlink for tooltip scanning / user-facing alerts.
+    -- Keep one current hyperlink for user-facing loot alerts/history.
     if not links[key] then
         links[key] = link
     end
@@ -4170,12 +3970,9 @@ local function CaptureBagSnapshot()
     return snapshot, links
 end
 
-local bagSnapshotLinks = {}
-
 local function RefreshBagBaseline()
-    local current, links = CaptureBagSnapshot()
+    local current = CaptureBagSnapshot()
     bagSnapshot = current
-    bagSnapshotLinks = links
 end
 
 local function CheckBagChanges()
@@ -4186,13 +3983,11 @@ local function CheckBagChanges()
     -- never treat those repopulated items as loot.
     if GetTime() < suppressBagAlertsUntil then
         bagSnapshot = current
-        bagSnapshotLinks = currentLinks
         return
     end
 
     if not EbonAffixAlertDB.enabled then
         bagSnapshot = current
-        bagSnapshotLinks = currentLinks
         return
     end
 
@@ -4216,16 +4011,12 @@ local function CheckBagChanges()
             end
 
             if link then
-                local alerted = AlertForLink(link, "INVENTORY_COUNT_INCREASE")
-                if not alerted then
-                    QueueWeaponAffixRetry(link)
-                end
+                AlertForLink(link, "INVENTORY_COUNT_INCREASE")
             end
         end
     end
 
     bagSnapshot = current
-    bagSnapshotLinks = currentLinks
 end
 
 -- BAG_UPDATE can fire once for the source bag and again for the destination

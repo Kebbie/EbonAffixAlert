@@ -1,4 +1,4 @@
--- Ebon Affix Alert v1.1.2 bootstrap
+-- Ebon Affix Alert v1.2.0 bootstrap
 
 EbonAffixAlertMainLoaded = false
 

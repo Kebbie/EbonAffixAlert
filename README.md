@@ -63,8 +63,9 @@ World of Warcraft\Interface\AddOns
 
 ### Loot detection
 
-- Newly acquired weapons receive short delayed tooltip retries if their proc data is not immediately available
-- Weapon affixes can also be identified from their Ebonhold proc text when the affix is not present in the weapon name
+- Weapon source items are identified by an exact hardcoded source-weapon name lookup built from Project Ebonhold's extractable-item list
+- Weapon loot detection does not scan item tooltips or compare proc text during normal play
+- The current source table covers all 194 researched extractable item IDs (192 unique displayed weapon names)
 **EAA** will detect when you loot an item with a tracked affix and alert you. Several safeguarding measure have been implemented to prevent false alerts.
 
 ### Alerts
