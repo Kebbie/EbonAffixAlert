@@ -66,6 +66,17 @@ World of Warcraft\Interface\AddOns
 - Weapon source items are identified by an exact hardcoded source-weapon name lookup built from Project Ebonhold's extractable-item list
 - Weapon loot detection does not scan item tooltips or compare proc text during normal play
 - The current source table covers all 194 researched extractable item IDs (192 unique displayed weapon names)
+
+### Bag highlighting
+
+- The default Blizzard bag UI can highlight items whose affix/rank you are currently tracking
+- Highlights use a static crystallised border tinted to the item's normal quality colour: Uncommon green, Rare blue, Epic purple, Legendary orange
+- Poor/Common items are ignored
+- The feature is event-driven and does not use a continuous OnUpdate scan
+- Highlights refresh immediately when tracking selections change
+- Toggle it with **Highlight tracked bag items** in the main EAA settings window
+- Bag highlighting supports the default Blizzard bags, Bagnon 2.13.3, the tested WoTLK 3.3.5 AdiBags backport, and OneBag3 r131.
+- Additional bag-addon adapters such as Bagnon are planned separately so they do not complicate the core affix detector
 **EAA** will detect when you loot an item with a tracked affix and alert you. Several safeguarding measure have been implemented to prevent false alerts.
 
 ### Alerts

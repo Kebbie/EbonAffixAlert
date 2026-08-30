@@ -1,4 +1,4 @@
--- Ebon Affix Alert v1.2.0
+-- Ebon Affix Alert v1.3.0
 -- WoW 3.3.5a compatible core
 
 -- General affixes: {name, fallback max rank}. Ebonhold API overrides rank when available.
@@ -138,6 +138,17 @@ local RequestEbonholdAffixIcons
 local ApplyAffixIconsToRows
 local ShowAffixTooltip
 local supportCopyWindow
+local function RefreshVisibleBagHighlights()
+    if EbonAffixAlertBagHighlights and EbonAffixAlertBagHighlights.RefreshVisible then
+        EbonAffixAlertBagHighlights.RefreshVisible()
+    end
+end
+
+local function InitializeBagHighlighting()
+    if EbonAffixAlertBagHighlights and EbonAffixAlertBagHighlights.Initialize then
+        EbonAffixAlertBagHighlights.Initialize()
+    end
+end
 
 local function EnsureDB()
     if type(EbonAffixAlertDB) ~= "table" then EbonAffixAlertDB = {} end
@@ -154,6 +165,9 @@ local function EnsureDB()
     end
     if EbonAffixAlertDB.alertSound == nil then
         EbonAffixAlertDB.alertSound = true
+    end
+    if EbonAffixAlertDB.bagHighlights == nil then
+        EbonAffixAlertDB.bagHighlights = true
     end
     if EbonAffixAlertDB.debug == nil then EbonAffixAlertDB.debug = false end
     if EbonAffixAlertDB.uiStyle == nil then EbonAffixAlertDB.uiStyle = "Modern" end
@@ -203,9 +217,9 @@ end
 
 local function GetEAAVersion()
     if GetAddOnMetadata then
-        return GetAddOnMetadata("EbonAffixAlert","Version") or "1.2.0"
+        return GetAddOnMetadata("EbonAffixAlert","Version") or "1.3.0"
     end
-    return "1.2.0"
+    return "1.3.0"
 end
 
 -- Two lightweight skins; the selected style is saved in EbonAffixAlertDB.
@@ -1078,7 +1092,7 @@ end
 -- is removed from normal chat frames immediately after joining.
 -- ---------------------------------------------------------------------------
 local EAA_UPDATE_CHANNEL = "ebonaffixalert"
-local EAA_RELEASE_VERSION = "1.2.0"
+local EAA_RELEASE_VERSION = "1.3.0"
 
 
 local eaaUpdateDebug = false
@@ -1586,6 +1600,7 @@ local function BuildBugReport()
         "Debug enabled: " .. tostring(EbonAffixAlertDB.debug),
         "Large alert enabled: " .. tostring(EbonAffixAlertDB.announceToRaidWarning),
         "Alert sound enabled: " .. tostring(EbonAffixAlertDB.alertSound),
+        "Bag highlights enabled: " .. tostring(EbonAffixAlertDB.bagHighlights),
         "Minimap shown: " .. tostring(EbonAffixAlertDB.minimap and EbonAffixAlertDB.minimap.show),
         "Loot History shown: " .. tostring(EbonAffixAlertDB.lootWindow and EbonAffixAlertDB.lootWindow.show),
         "",
@@ -1799,6 +1814,9 @@ local function UpdateStatusText()
     if UpdateMinimapEnabledVisual then
         UpdateMinimapEnabledVisual()
     end
+    if RefreshVisibleBagHighlights then
+        RefreshVisibleBagHighlights()
+    end
 end
 
 local function RefreshChecks()
@@ -1813,6 +1831,9 @@ local function RefreshChecks()
         panel.enableCheck:SetChecked(EbonAffixAlertDB.enabled and 1 or nil)
         panel.raidCheck:SetChecked(EbonAffixAlertDB.announceToRaidWarning and 1 or nil)
         panel.soundCheck:SetChecked(EbonAffixAlertDB.alertSound and 1 or nil)
+        if panel.bagHighlightCheck then
+            panel.bagHighlightCheck:SetChecked(EbonAffixAlertDB.bagHighlights and 1 or nil)
+        end
         panel.minimapCheck:SetChecked(EbonAffixAlertDB.minimap.show and 1 or nil)
         panel.lootWindowCheck:SetChecked(EbonAffixAlertDB.lootWindow.show and 1 or nil)
     end
@@ -2074,6 +2095,7 @@ local function CreatePanel()
             if trackedOnly and ApplyAffixFilters then
                 ApplyAffixFilters()
             end
+            if RefreshVisibleBagHighlights then RefreshVisibleBagHighlights() end
         end)
 
         rankHeaders[rank] = h
@@ -2160,6 +2182,7 @@ local function CreatePanel()
                     if trackedOnly and ApplyAffixFilters then
                         ApplyAffixFilters()
                     end
+                    if RefreshVisibleBagHighlights then RefreshVisibleBagHighlights() end
                 end)
                 table.insert(generalChecks,cb)
                 table.insert(rowChecks,cb)
@@ -2208,6 +2231,7 @@ local function CreatePanel()
             if trackedOnly and ApplyAffixFilters then
                 ApplyAffixFilters()
             end
+            if RefreshVisibleBagHighlights then RefreshVisibleBagHighlights() end
         end)
 
         rowY = rowY - 27
@@ -2245,6 +2269,7 @@ local function CreatePanel()
             if trackedOnly and ApplyAffixFilters then
                 ApplyAffixFilters()
             end
+            if RefreshVisibleBagHighlights then RefreshVisibleBagHighlights() end
         end)
         local hover = CreateFrame("Frame",nil,wc)
         hover:SetWidth(215)
@@ -2315,6 +2340,7 @@ local function CreatePanel()
                             EbonAffixAlertDB.tracked[self.key] = nil
                         end
                         if trackedOnly and ApplyAffixFilters then ApplyAffixFilters() end
+                        if RefreshVisibleBagHighlights then RefreshVisibleBagHighlights() end
                     end)
                     table.insert(generalChecks,cb)
                     table.insert(rowInfo.checks,cb)
@@ -2489,6 +2515,7 @@ local function CreatePanel()
                 cb:SetChecked(1)
             end
         end
+        if RefreshVisibleBagHighlights then RefreshVisibleBagHighlights() end
     end)
 
     local oldShowGeneral = ShowGeneral
@@ -2613,6 +2640,20 @@ local function CreatePanel()
         end
     end)
     panel.lootWindowCheck = lootWindowCheck
+
+    local bagHighlightCheck = CreateFrame("CheckButton",nil,panel,"UICheckButtonTemplate")
+    SkinEAACheckbox(bagHighlightCheck)
+    bagHighlightCheck:SetWidth(24); bagHighlightCheck:SetHeight(24)
+    bagHighlightCheck:SetPoint("BOTTOMLEFT",300,7)
+    local bht = bagHighlightCheck:CreateFontString(nil,"OVERLAY","GameFontNormal")
+    bht:SetPoint("LEFT",bagHighlightCheck,"RIGHT",2,0)
+    bht:SetText("Highlight tracked bag items")
+    SetEAATextColor(bht,EAA_THEME.text)
+    bagHighlightCheck:SetScript("OnClick",function(self)
+        EbonAffixAlertDB.bagHighlights = self:GetChecked() and true or false
+        if RefreshVisibleBagHighlights then RefreshVisibleBagHighlights() end
+    end)
+    panel.bagHighlightCheck = bagHighlightCheck
 
     RefreshGeneralRankControls()
     panel:SetScript("OnShow",function()
@@ -3106,6 +3147,37 @@ local function FindTrackedAffix(itemName)
     end
 end
 
+-- Small module-facing APIs used by BagHighlights.lua. Keeping the affix matcher
+-- in the core avoids duplicating tracking rules in individual bag adapters.
+function EbonAffixAlert_IsItemNameTracked(itemName)
+    return FindTrackedAffix(itemName)
+end
+
+-- Bag links can occasionally expose a slightly different displayed-name form
+-- than the loot-chat link that originally triggered EAA. Try the exact rendered
+-- link name first (same path as normal alerts), then fall back to GetItemInfo's
+-- canonical item name. This is still only O(1) for Weapon source items and does
+-- not construct or scan any tooltip.
+function EbonAffixAlert_GetTrackedAffixForItemLink(link)
+    if not link then return nil end
+
+    local displayedName = ExtractDisplayedItemName(link)
+    local affixName,rank,affixType = FindTrackedAffix(displayedName)
+    if affixName then
+        return affixName,rank,affixType
+    end
+
+    if GetItemInfo then
+        local canonicalName = GetItemInfo(link)
+        if canonicalName and canonicalName ~= displayedName then
+            return FindTrackedAffix(canonicalName)
+        end
+    end
+
+    return nil
+end
+
+-- Bag UI highlighting lives in BagHighlights.lua.
 
 -- `/eaa weaponAffixes` remains a support/export command. Spell descriptions are
 -- fetched only when the user explicitly invokes the command; they are never
@@ -4072,6 +4144,7 @@ frame:SetScript("OnEvent",function(self,event,...)
         CreateMinimapButton()
         CreateLootWindow()
         CreateInterfaceOptionsPanel()
+        InitializeBagHighlighting()
         ApplyAffixIconsToRows()
         RequestEbonholdAffixIcons()
         RefreshBagBaseline()

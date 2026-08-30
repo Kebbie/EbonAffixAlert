@@ -2,9 +2,11 @@
 ## Title: Ebon Affix Alert
 ## Notes: Announces Project Ebonhold loot containing selected affixes.
 ## Author: ChatGPT
-## Version: 1.2.0
+## Version: 1.3.0
 ## SavedVariables: EbonAffixAlertDB
 ## SavedVariablesPerCharacter: EbonAffixAlertCharacterDB
+## OptionalDeps: Bagnon, AdiBags, OneBag3
 
 Bootstrap.lua
 EbonAffixAlert.lua
+BagHighlights.lua

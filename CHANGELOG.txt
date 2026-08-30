@@ -1,16 +1,32 @@
 # Ebon Affix Alert Changelog
 
+## v1.3.0 - 2026-08-29
+
+- Added bag highlighting for items containing currently tracked affixes.
+  - Uses a crystallised glow matching the item's normal quality colour: Uncommon, Rare, Epic, or Legendary.
+  - Highlights update automatically when tracked affixes are changed.
+  - Added an enabled-by-default "Highlight tracked bag items" setting.
+- Added bag highlighting support for:
+  - Blizzard default bags.
+  - Bagnon 2.13.3.
+  - AdiBags (WoTLK 3.3.5 backport).
+  - OneBag3 r131.
+- EAA detects the active bag UI during initialization and only enables the matching bag adapter.
+- Bag highlighting is event-driven with no continuous bag scanning.
+
 ## v1.2.0 - 2026-08-13
 
 - Reworked Weapon-affix source detection around the verified Project Ebonhold extractable weapon list.
-  - Added source-weapon mapping: represented by 192 unique weapon names, covering all current Weapon affix source items.
+  - Added the complete researched source-weapon mapping: 194 extractable item IDs represented by 192 unique weapon names, covering all current Weapon affix source items.
   - Weapon loot detection now performs a single O(1) exact-name table lookup instead of scanning item tooltips or comparing proc text.
   - Removed the Weapon tooltip-proc matcher, proc-normalization/scoring caches, hidden item-tooltip scan, and delayed Weapon tooltip retry queue from normal loot detection.
-- Fixed Lua 5.1 scope ordering for the server affix catalogue so runtime Ebonhold rank data is used correctly.
-- Fixed Lua 5.1 scope ordering for manual update-check state so newer peer versions are recorded correctly during a manual check.
-- Removed unused bag snapshot hyperlink state and the obsolete itemLink argument from affix matching.
-- Simplified loaded-addon diagnostics to request only the GetAddOnInfo value it actually uses.
-- Kept the Weapon spell-tooltip scanner strictly as an on-demand `/eaa weaponAffixes` export helper; it remains outside normal loot detection.
+  - Kept `/eaa weaponAffixes` as an on-demand support export and expanded it to list the hardcoded source weapons associated with each Weapon affix.
+  - Includes research corrections/confirmations such as Vilerend Slicer -> Execution, Burning War Axe -> Pyromancy, Zulian Slicer -> Wilds, and Riftmaker -> Concussion.
+  - Fixed Lua 5.1 scope ordering for the server affix catalogue so runtime Ebonhold rank data is used correctly.
+  - Fixed Lua 5.1 scope ordering for manual update-check state so newer peer versions are recorded correctly during a manual check.
+  - Removed unused bag snapshot hyperlink state and the obsolete itemLink argument from affix matching.
+  - Simplified loaded-addon diagnostics to request only the GetAddOnInfo value it actually uses.
+  - Kept the Weapon spell-tooltip scanner strictly as an on-demand `/eaa weaponAffixes` export helper; it remains outside normal loot detection.
 
 ## v1.1.2
 
