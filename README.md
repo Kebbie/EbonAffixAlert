@@ -302,3 +302,7 @@ See CHANGELOG.txt for version-specific changes.
 
 ### Update checking
 EAA uses a hidden realm-wide `ebonaffixalert` chat channel to exchange installed versions with other EAA users. If a newer version is seen, EAA prints a one-time update notice with a clickable GitHub Releases link. `/eaa update` shows update-channel status and `/eaa updateTest` runs a channel echo test.
+
+### EbonClearance integration
+
+When EbonClearance is installed, items currently in your bags that match an affix tracked by EAA are automatically protected on EbonClearance's Keep List. EAA removes only the Keep entries it created when those items no longer match the current tracked-affix selection.
