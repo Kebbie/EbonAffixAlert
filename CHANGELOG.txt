@@ -1,5 +1,24 @@
 # Ebon Affix Alert Changelog
 
+## v1.4.1 - 2026-09-06
+
+- Added an addon language selector to the main EAA window.
+- Language selection changes EAA's own interface/help text only. Affix names, item names, and game-provided text remain unchanged.
+- Added French interface localization; English remains the default.
+- Added German interface localization.
+- Added Spanish interface localization.
+- Adjusted the affix action buttons to accommodate longer translated labels.
+- Adjusted the filter row spacing to accommodate longer translated labels.
+
+## v1.4.0 - 2026-09-05
+- Added EbonClearance integration. Items in the player's bags with an affix currently tracked by EAA are automatically protected on EbonClearance's Keep List.
+  - EAA-managed Keep entries are removed when they are no longer needed by the current tracked-affix selection.
+  - Existing manual or EbonClearance-managed Keep entries are left untouched.
+  - BAG_UPDATE syncing reuses EAA's existing inventory snapshot to avoid an extra bag scan.
+- Added a hover tooltip explaining the EbonClearance Auto-Keep behaviour and its item-ID limitation.
+- Renamed the EbonClearance option to "Auto-Keep tracked items in EbonClearance".
+- Adjusted the footer options into a compact three-column layout.
+
 ## v1.3.0 - 2026-08-29
 
 - Added bag highlighting for items containing currently tracked affixes.

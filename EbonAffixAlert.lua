@@ -1,4 +1,4 @@
--- Ebon Affix Alert v1.3.0
+-- Ebon Affix Alert v1.4.1
 -- WoW 3.3.5a compatible core
 
 -- General affixes: {name, fallback max rank}. Ebonhold API overrides rank when available.
@@ -138,15 +138,26 @@ local RequestEbonholdAffixIcons
 local ApplyAffixIconsToRows
 local ShowAffixTooltip
 local supportCopyWindow
+local RefreshLocalizedText
 local function RefreshVisibleBagHighlights()
     if EbonAffixAlertBagHighlights and EbonAffixAlertBagHighlights.RefreshVisible then
         EbonAffixAlertBagHighlights.RefreshVisible()
+    end
+    -- Tracking changes also affect EbonClearance's EAA-managed Keep entries.
+    if EbonAffixAlertEbonClearance and EbonAffixAlertEbonClearance.Sync then
+        EbonAffixAlertEbonClearance.Sync()
     end
 end
 
 local function InitializeBagHighlighting()
     if EbonAffixAlertBagHighlights and EbonAffixAlertBagHighlights.Initialize then
         EbonAffixAlertBagHighlights.Initialize()
+    end
+end
+
+local function InitializeEbonClearanceIntegration()
+    if EbonAffixAlertEbonClearance and EbonAffixAlertEbonClearance.Initialize then
+        EbonAffixAlertEbonClearance.Initialize()
     end
 end
 
@@ -168,6 +179,18 @@ local function EnsureDB()
     end
     if EbonAffixAlertDB.bagHighlights == nil then
         EbonAffixAlertDB.bagHighlights = true
+    end
+    if EbonAffixAlertDB.language == nil then
+        EbonAffixAlertDB.language = "enUS"
+    end
+    if EbonAffixAlertDB.language ~= "enUS"
+        and EbonAffixAlertDB.language ~= "frFR"
+        and EbonAffixAlertDB.language ~= "deDE"
+        and EbonAffixAlertDB.language ~= "esES" then
+        EbonAffixAlertDB.language = "enUS"
+    end
+    if EbonAffixAlertDB.ebonClearanceKeep == nil then
+        EbonAffixAlertDB.ebonClearanceKeep = true
     end
     if EbonAffixAlertDB.debug == nil then EbonAffixAlertDB.debug = false end
     if EbonAffixAlertDB.uiStyle == nil then EbonAffixAlertDB.uiStyle = "Modern" end
@@ -217,9 +240,9 @@ end
 
 local function GetEAAVersion()
     if GetAddOnMetadata then
-        return GetAddOnMetadata("EbonAffixAlert","Version") or "1.3.0"
+        return GetAddOnMetadata("EbonAffixAlert","Version") or "1.4.1"
     end
-    return "1.3.0"
+    return "1.4.1"
 end
 
 -- Two lightweight skins; the selected style is saved in EbonAffixAlertDB.
@@ -269,6 +292,7 @@ local EAA_THEMES = {
 local EAA_THEME = EAA_THEMES.Modern
 local EAA_THEME_NAME = "Modern"
 local EAA_MEDIA_PATH = "Interface\\AddOns\\EbonAffixAlert\\Media\\"
+local L = EAA_L or function(text) return text end
 local eaaThemedFrames = {}
 local eaaThemedInsets = {}
 local eaaThemedButtons = {}
@@ -636,7 +660,7 @@ end
 local function ApplyLootHistoryTitleStyle()
     if not lootWindow or not lootWindow.title then return end
 
-    lootWindow.title:SetText("Loot History")
+    lootWindow.title:SetText(L("Loot History"))
     lootWindow.title:ClearAllPoints()
     lootWindow.title:SetPoint("TOPLEFT",20,-18)
 
@@ -1021,7 +1045,7 @@ local function ShowCopyTextWindow(titleText, bodyText)
 
         local hint = f:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
         hint:SetPoint("TOPLEFT",22,-48)
-        hint:SetText("Ctrl+A then Ctrl+C to copy the text below.")
+        hint:SetText(L("Ctrl+A then Ctrl+C to copy the text below."))
         SetEAATextColor(hint,EAA_THEME.muted)
         local editInset = CreateEAAInset(f)
         editInset:SetPoint("TOPLEFT",18,-70)
@@ -1068,7 +1092,7 @@ local function ShowCopyTextWindow(titleText, bodyText)
         done:SetWidth(80)
         done:SetHeight(24)
         done:SetPoint("BOTTOMRIGHT",-22,16)
-        done:SetText("Close")
+        done:SetText(L("Close"))
         SkinEAAButton(done)
         done:SetScript("OnClick",function() f:Hide() end)
 
@@ -1092,7 +1116,7 @@ end
 -- is removed from normal chat frames immediately after joining.
 -- ---------------------------------------------------------------------------
 local EAA_UPDATE_CHANNEL = "ebonaffixalert"
-local EAA_RELEASE_VERSION = "1.3.0"
+local EAA_RELEASE_VERSION = "1.4.1"
 
 
 local eaaUpdateDebug = false
@@ -1763,9 +1787,9 @@ ShowAffixTooltip = function(anchor,affixName,rank)
     GameTooltip:ClearLines()
     GameTooltip:AddLine(affixName,1,0.82,0)
     if not serverAffixCatalog[affixName] then
-        GameTooltip:AddLine("Waiting for Project Ebonhold affix data.",0.75,0.75,0.75,true)
+        GameTooltip:AddLine(L("Waiting for Project Ebonhold affix data."),0.75,0.75,0.75,true)
     else
-        GameTooltip:AddLine("Spell tooltip unavailable for this affix.",0.75,0.75,0.75,true)
+        GameTooltip:AddLine(L("Spell tooltip unavailable for this affix."),0.75,0.75,0.75,true)
     end
     GameTooltip:Show()
 end
@@ -1799,12 +1823,12 @@ end
 local function UpdateStatusText()
     if panel and panel.statusText then
         if EbonAffixAlertDB.enabled then
-            panel.statusText:SetText("|cff00ff00Tracking Enabled|r")
+            panel.statusText:SetText("|cff00ff00" .. L("Tracking Enabled") .. "|r")
             if panel.statusDot then
                 panel.statusDot:SetVertexColor(0,1,0)
             end
         else
-            panel.statusText:SetText("|cff888888Tracking Disabled|r")
+            panel.statusText:SetText("|cff888888" .. L("Tracking Disabled") .. "|r")
             if panel.statusDot then
                 panel.statusDot:SetVertexColor(0.45,0.45,0.45)
             end
@@ -1834,6 +1858,9 @@ local function RefreshChecks()
         if panel.bagHighlightCheck then
             panel.bagHighlightCheck:SetChecked(EbonAffixAlertDB.bagHighlights and 1 or nil)
         end
+        if panel.ebonClearanceKeepCheck then
+            panel.ebonClearanceKeepCheck:SetChecked(EbonAffixAlertDB.ebonClearanceKeep and 1 or nil)
+        end
         panel.minimapCheck:SetChecked(EbonAffixAlertDB.minimap.show and 1 or nil)
         panel.lootWindowCheck:SetChecked(EbonAffixAlertDB.lootWindow.show and 1 or nil)
     end
@@ -1856,8 +1883,15 @@ local function CreatePanel()
 
     local title = panel:CreateFontString(nil,"OVERLAY","GameFontNormalLarge")
     title:SetPoint("TOP",0,-18)
-    title:SetText("Ebon Affix Alert")
+    title:SetText(L("Ebon Affix Alert"))
     SetEAATextColor(title,EAA_THEME.title)
+    panel.titleText = title
+
+    local byline = panel:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+    byline:SetPoint("TOP",title,"BOTTOM",0,-2)
+    byline:SetText(L("Made By Kebbie"))
+    byline:SetTextColor(0.65,0.68,0.72)
+    panel.bylineText = byline
 
     local contentInset = CreateEAAInset(panel)
     contentInset:SetPoint("TOPLEFT",20,-78)
@@ -1872,8 +1906,9 @@ local function CreatePanel()
 
     local styleLabel = panel:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
     styleLabel:SetPoint("TOPLEFT",14,-18)
-    styleLabel:SetText("Style:")
+    styleLabel:SetText(L("Style:"))
     SetEAATextColor(styleLabel,EAA_THEME.muted)
+    panel.styleLabel = styleLabel
 
     -- Custom EAA style selector: avoids Blizzard UIDropDownMenu taint on 3.3.5a.
     local styleDrop = CreateFrame("Button",nil,panel,"UIPanelButtonTemplate")
@@ -1906,19 +1941,19 @@ local function CreatePanel()
     modernChoice:SetWidth(104)
     modernChoice:SetHeight(22)
     modernChoice:SetPoint("TOP",0,-4)
-    modernChoice:SetText("Modern")
+    modernChoice:SetText(L("Modern"))
     SkinEAAButton(modernChoice)
 
     local fantasyChoice = CreateFrame("Button",nil,styleMenu,"UIPanelButtonTemplate")
     fantasyChoice:SetWidth(104)
     fantasyChoice:SetHeight(22)
     fantasyChoice:SetPoint("TOP",modernChoice,"BOTTOM",0,-2)
-    fantasyChoice:SetText("Fantasy")
+    fantasyChoice:SetText(L("Fantasy"))
     SkinEAAButton(fantasyChoice)
 
     function styleDrop:SetEAASelected(styleName)
         if styleName ~= "Fantasy" then styleName = "Modern" end
-        styleValue:SetText(styleName)
+        styleValue:SetText(L(styleName))
         styleMenu:Hide()
     end
 
@@ -1938,18 +1973,109 @@ local function CreatePanel()
 
     styleDrop:SetEAASelected(EbonAffixAlertDB.uiStyle or "Modern")
     panel.styleDrop = styleDrop
+    panel.modernChoice = modernChoice
+    panel.fantasyChoice = fantasyChoice
+
+    local languageLabel = panel:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+    languageLabel:SetPoint("TOPLEFT",392,-61)
+    languageLabel:SetText(L("Language:"))
+    SetEAATextColor(languageLabel,EAA_THEME.muted)
+    panel.languageLabel = languageLabel
+
+    local languageDrop = CreateFrame("Button",nil,panel,"UIPanelButtonTemplate")
+    languageDrop:SetWidth(126)
+    languageDrop:SetHeight(24)
+    languageDrop:SetPoint("LEFT",languageLabel,"RIGHT",8,0)
+    SkinEAAButton(languageDrop)
+
+    local languageValue = languageDrop:CreateFontString(nil,"OVERLAY","GameFontHighlight")
+    languageValue:SetPoint("LEFT",12,0)
+    languageValue:SetJustifyH("LEFT")
+    languageValue:SetWidth(86)
+    SetEAATextColor(languageValue,EAA_THEME.text)
+
+    local languageArrow = languageDrop:CreateFontString(nil,"OVERLAY","GameFontNormal")
+    languageArrow:SetPoint("RIGHT",-10,0)
+    languageArrow:SetText("v")
+    SetEAATextColor(languageArrow,EAA_THEME.cyan)
+
+    local languageMenu = CreateFrame("Frame",nil,panel)
+    languageMenu:SetWidth(126)
+    languageMenu:SetHeight(106)
+    languageMenu:SetPoint("TOPLEFT",languageDrop,"BOTTOMLEFT",0,-2)
+    languageMenu:SetFrameStrata("DIALOG")
+    languageMenu:SetFrameLevel(panel:GetFrameLevel() + 30)
+    ApplyEAAFrameSkin(languageMenu)
+    languageMenu:Hide()
+
+    local englishChoice = CreateFrame("Button",nil,languageMenu,"UIPanelButtonTemplate")
+    englishChoice:SetWidth(118); englishChoice:SetHeight(22)
+    englishChoice:SetPoint("TOP",0,-4)
+    englishChoice:SetText("English")
+    SkinEAAButton(englishChoice)
+
+    local frenchChoice = CreateFrame("Button",nil,languageMenu,"UIPanelButtonTemplate")
+    frenchChoice:SetWidth(118); frenchChoice:SetHeight(22)
+    frenchChoice:SetPoint("TOP",englishChoice,"BOTTOM",0,-2)
+    frenchChoice:SetText("Français")
+    SkinEAAButton(frenchChoice)
+
+    local germanChoice = CreateFrame("Button",nil,languageMenu,"UIPanelButtonTemplate")
+    germanChoice:SetWidth(118); germanChoice:SetHeight(22)
+    germanChoice:SetPoint("TOP",frenchChoice,"BOTTOM",0,-2)
+    germanChoice:SetText("Deutsch")
+    SkinEAAButton(germanChoice)
+
+    local spanishChoice = CreateFrame("Button",nil,languageMenu,"UIPanelButtonTemplate")
+    spanishChoice:SetWidth(118); spanishChoice:SetHeight(22)
+    spanishChoice:SetPoint("TOP",germanChoice,"BOTTOM",0,-2)
+    spanishChoice:SetText("Español")
+    SkinEAAButton(spanishChoice)
+
+    function languageDrop:SetEAASelected(language)
+        if language == "frFR" then
+            languageValue:SetText("Français")
+        elseif language == "deDE" then
+            languageValue:SetText("Deutsch")
+        elseif language == "esES" then
+            languageValue:SetText("Español")
+        else
+            languageValue:SetText("English")
+        end
+        languageMenu:Hide()
+    end
+
+    local function SelectEAALanguage(language)
+        if language ~= "frFR" and language ~= "deDE" and language ~= "esES" then language = "enUS" end
+        EbonAffixAlertDB.language = language
+        languageDrop:SetEAASelected(language)
+        if RefreshLocalizedText then RefreshLocalizedText() end
+    end
+
+    languageDrop:SetScript("OnClick",function()
+        if languageMenu:IsShown() then languageMenu:Hide() else languageMenu:Show() end
+    end)
+    englishChoice:SetScript("OnClick",function() SelectEAALanguage("enUS") end)
+    frenchChoice:SetScript("OnClick",function() SelectEAALanguage("frFR") end)
+    germanChoice:SetScript("OnClick",function() SelectEAALanguage("deDE") end)
+    spanishChoice:SetScript("OnClick",function() SelectEAALanguage("esES") end)
+
+    languageDrop:SetEAASelected(EbonAffixAlertDB.language or "enUS")
+    panel.languageDrop = languageDrop
 
     local generalButton = CreateFrame("Button",nil,panel,"UIPanelButtonTemplate")
     generalButton:SetWidth(100); generalButton:SetHeight(24)
     generalButton:SetPoint("TOPLEFT",25,-55)
-    generalButton:SetText("General")
+    generalButton:SetText(L("General"))
     SkinEAAButton(generalButton)
+    panel.generalButton = generalButton
 
     local weaponButton = CreateFrame("Button",nil,panel,"UIPanelButtonTemplate")
     weaponButton:SetWidth(100); weaponButton:SetHeight(24)
     weaponButton:SetPoint("LEFT",generalButton,"RIGHT",8,0)
-    weaponButton:SetText("Weapon")
+    weaponButton:SetText(L("Weapon"))
     SkinEAAButton(weaponButton)
+    panel.weaponButton = weaponButton
 
     panel.statusText = panel:CreateFontString(nil,"OVERLAY","GameFontNormal")
     panel.statusText:SetPoint("TOP",8,-61)
@@ -1972,12 +2098,12 @@ local function CreatePanel()
 
     local searchLabel = searchLabelLayer:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
     searchLabel:SetPoint("TOPLEFT",28,-91)
-    searchLabel:SetText("Filter:")
+    searchLabel:SetText(L("Filter:"))
     SetEAATextColor(searchLabel,EAA_THEME.muted)
     panel.searchLabelLayer = searchLabelLayer
 
     local searchBox = CreateFrame("EditBox","EbonAffixAlertSearchBox",panel,"InputBoxTemplate")
-    searchBox:SetWidth(210)
+    searchBox:SetWidth(135)
     searchBox:SetTextColor(EAA_THEME.text[1],EAA_THEME.text[2],EAA_THEME.text[3])
     searchBox:SetHeight(20)
     searchBox:SetPoint("LEFT",searchLabel,"RIGHT",10,0)
@@ -2003,13 +2129,14 @@ local function CreatePanel()
     trackedOnlyCheck:SetPoint("LEFT",searchBox,"RIGHT",10,0)
     local trackedText = trackedOnlyCheck:CreateFontString(nil,"OVERLAY","GameFontNormal")
     trackedText:SetPoint("LEFT",trackedOnlyCheck,"RIGHT",2,0)
-    trackedText:SetText("Tracked only")
+    trackedText:SetText(L("Tracked only"))
     SetEAATextColor(trackedText,EAA_THEME.text)
     trackedOnlyCheck:SetScript("OnClick",function(self)
         trackedOnly = self:GetChecked() and true or false
         if ApplyAffixFilters then ApplyAffixFilters() end
     end)
     panel.trackedOnlyCheck = trackedOnlyCheck
+    panel.trackedOnlyText = trackedText
 
     local generalPage = CreateFrame("Frame",nil,panel)
     generalPage:SetPoint("TOPLEFT",20,-146)
@@ -2035,7 +2162,7 @@ local function CreatePanel()
     local allX = 555
     local head = gc:CreateFontString(nil,"OVERLAY","GameFontNormal")
     head:SetPoint("TOPLEFT",4,-3)
-    head:SetText("Affix")
+    head:SetText(L("Affix"))
     SetEAATextColor(head,EAA_THEME.cyan)
 
     local rank
@@ -2058,9 +2185,9 @@ local function CreatePanel()
         h:SetScript("OnEnter",function(self)
             GameTooltip:SetOwner(self,"ANCHOR_TOP")
             GameTooltip:ClearLines()
-            GameTooltip:AddLine("Rank " .. (roman[self.rank] or tostring(self.rank)),1,0.82,0)
-            GameTooltip:AddLine("Click to track all General affixes available at this rank.",1,1,1,true)
-            GameTooltip:AddLine("If every available affix at this rank is already tracked, clicking clears them all.",0.75,0.75,0.75,true)
+            GameTooltip:AddLine(L("Rank") .. " " .. (roman[self.rank] or tostring(self.rank)),1,0.82,0)
+            GameTooltip:AddLine(L("Click to track all General affixes available at this rank."),1,1,1,true)
+            GameTooltip:AddLine(L("If every available affix at this rank is already tracked, clicking clears them all."),0.75,0.75,0.75,true)
             GameTooltip:Show()
         end)
         h:SetScript("OnLeave",function() GameTooltip:Hide() end)
@@ -2106,8 +2233,9 @@ local function CreatePanel()
     allHead:SetWidth(46)
     allHead:SetJustifyH("CENTER")
     allHead:SetPoint("TOPLEFT",allX,-3)
-    allHead:SetText("All")
+    allHead:SetText(L("All"))
     SetEAATextColor(allHead,EAA_THEME.cyan)
+    panel.generalAllHeader = allHead
 
     local rowY = -28
     local _, entry
@@ -2193,7 +2321,7 @@ local function CreatePanel()
         allButton:SetWidth(46); allButton:SetHeight(20)
         allButton:SetPoint("TOPLEFT",allX,rowY+2)
         allButton.allDynamicX = allX
-        allButton:SetText("All")
+        allButton:SetText(L("All"))
         SkinEAAButton(allButton)
         allButton.rowChecks = rowChecks
         allButton.affixName = affixName
@@ -2202,8 +2330,8 @@ local function CreatePanel()
             GameTooltip:SetOwner(self,"ANCHOR_RIGHT")
             GameTooltip:ClearLines()
             GameTooltip:AddLine(self.affixName .. " - All Ranks",1,0.82,0)
-            GameTooltip:AddLine("Click to track every available rank for this affix.",1,1,1,true)
-            GameTooltip:AddLine("If every rank is already tracked, clicking clears them all.",0.75,0.75,0.75,true)
+            GameTooltip:AddLine(L("Click to track every available rank for this affix."),1,1,1,true)
+            GameTooltip:AddLine(L("If every rank is already tracked, clicking clears them all."),0.75,0.75,0.75,true)
             GameTooltip:Show()
         end)
         allButton:SetScript("OnLeave",function() GameTooltip:Hide() end)
@@ -2488,18 +2616,26 @@ local function CreatePanel()
     local clearAll = CreateFrame("Button",nil,panel,"UIPanelButtonTemplate")
     clearAll:SetWidth(90); clearAll:SetHeight(24)
     clearAll:SetPoint("TOPRIGHT",-28,-84)
-    clearAll:SetText("Clear All")
+    clearAll:SetText(L("Clear All"))
     SkinEAAButton(clearAll)
+    if clearAll:GetFontString() then
+        clearAll:GetFontString():SetFontObject(GameFontNormalSmall)
+    end
+    panel.clearAllButton = clearAll
     clearAll:SetScript("OnClick",function()
         EbonAffixAlertDB.tracked = {}
         RefreshChecks()
     end)
 
     local selectPage = CreateFrame("Button",nil,panel,"UIPanelButtonTemplate")
-    selectPage:SetWidth(90); selectPage:SetHeight(24)
+    selectPage:SetWidth(122); selectPage:SetHeight(24)
     selectPage:SetPoint("RIGHT",clearAll,"LEFT",0,0)
-    selectPage:SetText("Select All")
+    selectPage:SetText(L("Select All"))
     SkinEAAButton(selectPage)
+    if selectPage:GetFontString() then
+        selectPage:GetFontString():SetFontObject(GameFontNormalSmall)
+    end
+    panel.selectAllButton = selectPage
 
     local currentPage = "general"
     selectPage:SetScript("OnClick",function()
@@ -2533,12 +2669,12 @@ local function CreatePanel()
 
     local alertSection = panel:CreateFontString(nil,"OVERLAY","GameFontNormal")
     alertSection:SetPoint("BOTTOMLEFT",24,82)
-    alertSection:SetText("Alerts")
+    alertSection:SetText(L("Alerts"))
     SetEAATextColor(alertSection,EAA_THEME.cyan)
 
     local interfaceSection = panel:CreateFontString(nil,"OVERLAY","GameFontNormal")
     interfaceSection:SetPoint("BOTTOMLEFT",300,82)
-    interfaceSection:SetText("Interface")
+    interfaceSection:SetText(L("Interface"))
     SetEAATextColor(interfaceSection,EAA_THEME.cyan)
 
     local alertsDivider = panel:CreateTexture(nil,"ARTWORK")
@@ -2569,49 +2705,52 @@ local function CreatePanel()
     SkinEAACheckbox(enable)
     enable:SetWidth(24); enable:SetHeight(24)
     enable:SetPoint("BOTTOMLEFT",24,57)
-    local et = enable:CreateFontString(nil,"OVERLAY","GameFontNormal")
+    local et = enable:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
     et:SetPoint("LEFT",enable,"RIGHT",2,0)
-    et:SetText("Enable loot tracking")
+    et:SetText(L("Enable loot tracking"))
     SetEAATextColor(et,EAA_THEME.text)
     enable:SetScript("OnClick",function(self)
         EbonAffixAlertDB.enabled = self:GetChecked() and true or false
         UpdateStatusText()
     end)
     panel.enableCheck = enable
+    panel.enableText = et
 
     local raid = CreateFrame("CheckButton",nil,panel,"UICheckButtonTemplate")
     SkinEAACheckbox(raid)
     raid:SetWidth(24); raid:SetHeight(24)
     raid:SetPoint("BOTTOMLEFT",24,32)
-    local rt = raid:CreateFontString(nil,"OVERLAY","GameFontNormal")
+    local rt = raid:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
     rt:SetPoint("LEFT",raid,"RIGHT",2,0)
-    rt:SetText("Large on-screen alert")
+    rt:SetText(L("Large on-screen alert"))
     SetEAATextColor(rt,EAA_THEME.text)
     raid:SetScript("OnClick",function(self)
         EbonAffixAlertDB.announceToRaidWarning = self:GetChecked() and true or false
     end)
     panel.raidCheck = raid
+    panel.raidText = rt
 
     local sound = CreateFrame("CheckButton",nil,panel,"UICheckButtonTemplate")
     SkinEAACheckbox(sound)
     sound:SetWidth(24); sound:SetHeight(24)
     sound:SetPoint("BOTTOMLEFT",24,7)
-    local st = sound:CreateFontString(nil,"OVERLAY","GameFontNormal")
+    local st = sound:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
     st:SetPoint("LEFT",sound,"RIGHT",2,0)
-    st:SetText("Alert Sound")
+    st:SetText(L("Alert Sound"))
     SetEAATextColor(st,EAA_THEME.text)
     sound:SetScript("OnClick",function(self)
         EbonAffixAlertDB.alertSound = self:GetChecked() and true or false
     end)
     panel.soundCheck = sound
+    panel.soundText = st
 
     local minimapCheck = CreateFrame("CheckButton",nil,panel,"UICheckButtonTemplate")
     SkinEAACheckbox(minimapCheck)
     minimapCheck:SetWidth(24); minimapCheck:SetHeight(24)
-    minimapCheck:SetPoint("BOTTOMLEFT",300,57)
-    local mt = minimapCheck:CreateFontString(nil,"OVERLAY","GameFontNormal")
+    minimapCheck:SetPoint("BOTTOMLEFT",220,57)
+    local mt = minimapCheck:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
     mt:SetPoint("LEFT",minimapCheck,"RIGHT",2,0)
-    mt:SetText("Show minimap icon")
+    mt:SetText(L("Show minimap icon"))
     SetEAATextColor(mt,EAA_THEME.text)
     minimapCheck:SetScript("OnClick",function(self)
         EbonAffixAlertDB.minimap.show = self:GetChecked() and true or false
@@ -2620,14 +2759,15 @@ local function CreatePanel()
         end
     end)
     panel.minimapCheck = minimapCheck
+    panel.minimapText = mt
 
     local lootWindowCheck = CreateFrame("CheckButton",nil,panel,"UICheckButtonTemplate")
     SkinEAACheckbox(lootWindowCheck)
     lootWindowCheck:SetWidth(24); lootWindowCheck:SetHeight(24)
-    lootWindowCheck:SetPoint("BOTTOMLEFT",300,32)
-    local lwt = lootWindowCheck:CreateFontString(nil,"OVERLAY","GameFontNormal")
+    lootWindowCheck:SetPoint("BOTTOMLEFT",220,32)
+    local lwt = lootWindowCheck:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
     lwt:SetPoint("LEFT",lootWindowCheck,"RIGHT",2,0)
-    lwt:SetText("Show loot history window")
+    lwt:SetText(L("Show loot history window"))
     SetEAATextColor(lwt,EAA_THEME.text)
     lootWindowCheck:SetScript("OnClick",function(self)
         EbonAffixAlertDB.lootWindow.show = self:GetChecked() and true or false
@@ -2640,29 +2780,154 @@ local function CreatePanel()
         end
     end)
     panel.lootWindowCheck = lootWindowCheck
+    panel.lootWindowText = lwt
 
     local bagHighlightCheck = CreateFrame("CheckButton",nil,panel,"UICheckButtonTemplate")
     SkinEAACheckbox(bagHighlightCheck)
     bagHighlightCheck:SetWidth(24); bagHighlightCheck:SetHeight(24)
-    bagHighlightCheck:SetPoint("BOTTOMLEFT",300,7)
-    local bht = bagHighlightCheck:CreateFontString(nil,"OVERLAY","GameFontNormal")
+    bagHighlightCheck:SetPoint("BOTTOMLEFT",220,7)
+    local bht = bagHighlightCheck:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
     bht:SetPoint("LEFT",bagHighlightCheck,"RIGHT",2,0)
-    bht:SetText("Highlight tracked bag items")
+    bht:SetText(L("Highlight tracked bag items"))
     SetEAATextColor(bht,EAA_THEME.text)
     bagHighlightCheck:SetScript("OnClick",function(self)
         EbonAffixAlertDB.bagHighlights = self:GetChecked() and true or false
         if RefreshVisibleBagHighlights then RefreshVisibleBagHighlights() end
     end)
     panel.bagHighlightCheck = bagHighlightCheck
+    panel.bagHighlightText = bht
+
+    local ebonClearanceKeepCheck = CreateFrame("CheckButton",nil,panel,"UICheckButtonTemplate")
+    SkinEAACheckbox(ebonClearanceKeepCheck)
+    ebonClearanceKeepCheck:SetWidth(24); ebonClearanceKeepCheck:SetHeight(24)
+    ebonClearanceKeepCheck:SetPoint("BOTTOMLEFT",416,57)
+    local eckt = ebonClearanceKeepCheck:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+    eckt:SetPoint("TOPLEFT",ebonClearanceKeepCheck,"TOPRIGHT",2,-1)
+    eckt:SetWidth(165)
+    eckt:SetJustifyH("LEFT")
+    eckt:SetJustifyV("TOP")
+    eckt:SetText(L("Auto-Keep tracked items\nin EbonClearance"))
+    SetEAATextColor(eckt,EAA_THEME.text)
+
+    local function ShowEbonClearanceKeepTooltip(anchor)
+        GameTooltip:SetOwner(anchor,"ANCHOR_TOPLEFT")
+        GameTooltip:ClearLines()
+        GameTooltip:AddLine(L("Auto-Keep tracked items in EbonClearance"),1,0.82,0)
+        GameTooltip:AddLine(
+            L("When enabled, items in your bags with an affix you are currently tracking in EAA are automatically added to EbonClearance's Keep List."),
+            1,1,1,true
+        )
+        GameTooltip:AddLine(
+            L("If you stop tracking that affix, EAA removes the Keep entry only if EAA originally added it. Manual EbonClearance Keep entries are left untouched."),
+            0.82,0.82,0.82,true
+        )
+        GameTooltip:AddLine(
+            L("EbonClearance stores Keep rules by item ID. If two copies of the same item have different affixes, protecting one copy will therefore protect both."),
+            1,0.72,0.35,true
+        )
+        GameTooltip:Show()
+    end
+
+    ebonClearanceKeepCheck:SetScript("OnEnter",function(self)
+        ShowEbonClearanceKeepTooltip(self)
+    end)
+    ebonClearanceKeepCheck:SetScript("OnLeave",function()
+        GameTooltip:Hide()
+    end)
+
+    -- FontStrings cannot receive mouse scripts in this client, so use a small
+    -- invisible hover region over the two-line label as the tooltip target.
+    local ebonClearanceKeepHover = CreateFrame("Frame",nil,panel)
+    ebonClearanceKeepHover:SetPoint("TOPLEFT",eckt,"TOPLEFT",-1,1)
+    ebonClearanceKeepHover:SetWidth(168)
+    ebonClearanceKeepHover:SetHeight(30)
+    ebonClearanceKeepHover:SetFrameLevel(panel:GetFrameLevel() + 10)
+    ebonClearanceKeepHover:EnableMouse(true)
+    ebonClearanceKeepHover:SetScript("OnEnter",function(self)
+        ShowEbonClearanceKeepTooltip(self)
+    end)
+    ebonClearanceKeepHover:SetScript("OnLeave",function()
+        GameTooltip:Hide()
+    end)
+    panel.ebonClearanceKeepHover = ebonClearanceKeepHover
+
+    ebonClearanceKeepCheck:SetScript("OnClick",function(self)
+        EbonAffixAlertDB.ebonClearanceKeep = self:GetChecked() and true or false
+        -- A resync immediately adds newly-protected items or removes only the
+        -- Keep entries that EAA itself previously created when protection is
+        -- switched off.
+        if EbonAffixAlertEbonClearance and EbonAffixAlertEbonClearance.Sync then
+            EbonAffixAlertEbonClearance.Sync()
+        end
+    end)
+    panel.ebonClearanceKeepCheck = ebonClearanceKeepCheck
+    panel.ebonClearanceKeepText = eckt
 
     RefreshGeneralRankControls()
     panel:SetScript("OnShow",function()
         SetEAATheme(EbonAffixAlertDB.uiStyle or "Modern")
+        if RefreshLocalizedText then RefreshLocalizedText() end
         RefreshGeneralRankControls()
         RefreshChecks()
     end)
     ShowGeneral()
     panel:Hide()
+end
+
+RefreshLocalizedText = function()
+    if not panel then return end
+
+    if panel.titleText then panel.titleText:SetText(L("Ebon Affix Alert")) end
+    if panel.bylineText then panel.bylineText:SetText(L("Made By Kebbie")) end
+    if panel.styleLabel then panel.styleLabel:SetText(L("Style:")) end
+    if panel.modernChoice then panel.modernChoice:SetText(L("Modern")) end
+    if panel.fantasyChoice then panel.fantasyChoice:SetText(L("Fantasy")) end
+    if panel.styleDrop and panel.styleDrop.SetEAASelected then
+        panel.styleDrop:SetEAASelected(EbonAffixAlertDB.uiStyle or "Modern")
+    end
+    if panel.languageLabel then panel.languageLabel:SetText(L("Language:")) end
+    if panel.languageDrop and panel.languageDrop.SetEAASelected then
+        panel.languageDrop:SetEAASelected(EbonAffixAlertDB.language or "enUS")
+    end
+    if panel.generalButton then panel.generalButton:SetText(L("General")) end
+    if panel.weaponButton then panel.weaponButton:SetText(L("Weapon")) end
+    if panel.searchLabel then panel.searchLabel:SetText(L("Filter:")) end
+    if panel.trackedOnlyText then panel.trackedOnlyText:SetText(L("Tracked only")) end
+    if panel.selectAllButton then panel.selectAllButton:SetText(L("Select All")) end
+    if panel.clearAllButton then panel.clearAllButton:SetText(L("Clear All")) end
+    if panel.generalAllHeader then panel.generalAllHeader:SetText(L("All")) end
+    local _, rowInfo
+    for _,rowInfo in ipairs(generalRows) do
+        if rowInfo and rowInfo.buttons then
+            local _, btn
+            for _,btn in ipairs(rowInfo.buttons) do
+                if btn and btn.SetText then btn:SetText(L("All")) end
+            end
+        end
+    end
+    if panel.enableText then panel.enableText:SetText(L("Enable loot tracking")) end
+    if panel.raidText then panel.raidText:SetText(L("Large on-screen alert")) end
+    if panel.soundText then panel.soundText:SetText(L("Alert Sound")) end
+    if panel.minimapText then panel.minimapText:SetText(L("Show minimap icon")) end
+    if panel.lootWindowText then panel.lootWindowText:SetText(L("Show loot history window")) end
+    if panel.bagHighlightText then panel.bagHighlightText:SetText(L("Highlight tracked bag items")) end
+    if panel.ebonClearanceKeepText then
+        panel.ebonClearanceKeepText:SetText(L("Auto-Keep tracked items\nin EbonClearance"))
+    end
+
+    -- Static page headers/buttons can be found by the references assigned when
+    -- the panel was built. Rebuilding the rows is unnecessary because affix
+    -- names themselves are deliberately not localized.
+    UpdateStatusText()
+
+    if lootWindow then
+        if lootWindow.title then lootWindow.title:SetText(L("Loot History")) end
+        if lootWindow.headerItem then lootWindow.headerItem:SetText(L("Item")) end
+        if lootWindow.headerAffix then lootWindow.headerAffix:SetText(L("Tracked Affix")) end
+        if lootWindow.clearButton then lootWindow.clearButton:SetText(L("Clear")) end
+        if lootWindow.hintText then lootWindow.hintText:SetText(L("Newest first - up to 50 entries")) end
+        if lootWindow.transparencyText then lootWindow.transparencyText:SetText(L("Transparency")) end
+    end
 end
 
 local function UpdateMinimapPosition()
@@ -2772,11 +3037,11 @@ local function CreateMinimapButton()
 
     minimapButton:SetScript("OnEnter",function(self)
         GameTooltip:SetOwner(self,"ANCHOR_LEFT")
-        GameTooltip:AddLine("Ebon Affix Alert")
-        GameTooltip:AddLine("Left-click: Open settings",1,1,1)
-        GameTooltip:AddLine("Right-click: Toggle tracking",1,1,1)
-        GameTooltip:AddLine("Ctrl + drag: Move minimap icon",1,1,1)
-        GameTooltip:AddLine("Shift-left-click: Hide minimap icon",1,1,1)
+        GameTooltip:AddLine(L("Ebon Affix Alert"))
+        GameTooltip:AddLine(L("Left-click: Open settings"),1,1,1)
+        GameTooltip:AddLine(L("Right-click: Toggle tracking"),1,1,1)
+        GameTooltip:AddLine(L("Ctrl + drag: Move minimap icon"),1,1,1)
+        GameTooltip:AddLine(L("Shift-left-click: Hide minimap icon"),1,1,1)
         GameTooltip:AddLine(
             "Loot history: " .. GetColoredLootHistoryCount(),
             1,1,1
@@ -3372,7 +3637,7 @@ local function RefreshLootWindow()
         if lootWindow.headerItem then
             lootWindow.headerItem:ClearAllPoints()
             lootWindow.headerItem:SetPoint("TOPLEFT",20,-54)
-            lootWindow.headerItem:SetText("Looted Item / Tracked Affix")
+            lootWindow.headerItem:SetText(L("Looted Item / Tracked Affix"))
         end
     else
         rowHeight = 22
@@ -3380,7 +3645,7 @@ local function RefreshLootWindow()
         if lootWindow.headerItem then
             lootWindow.headerItem:ClearAllPoints()
             lootWindow.headerItem:SetPoint("TOPLEFT",20,-54)
-            lootWindow.headerItem:SetText("Item")
+            lootWindow.headerItem:SetText(L("Item"))
         end
     end
 
@@ -3452,7 +3717,7 @@ local function RefreshLootWindow()
         row.affixIcon:Show()
 
         if narrowMode then
-            row.affix:SetText("Affix: " .. (entry.affixText or ""))
+            row.affix:SetText(L("Affix:") .. " " .. (entry.affixText or ""))
         else
             row.affix:SetText(entry.affixText or "")
         end
@@ -3520,7 +3785,7 @@ local function CreateLootWindow()
 
     local title = lootWindow:CreateFontString(nil,"OVERLAY","GameFontNormalLarge")
     title:SetPoint("TOPLEFT",20,-18)
-    title:SetText("Loot History")
+    title:SetText(L("Loot History"))
     SetEAATextColor(title,EAA_THEME.title)
     lootWindow.title = title
     ApplyLootHistoryTitleStyle()
@@ -3537,19 +3802,19 @@ local function CreateLootWindow()
 
     lootWindow.countText = lootWindow:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
     lootWindow.countText:SetPoint("TOPRIGHT",-42,-24)
-    lootWindow.countText:SetText("0 items")
+    lootWindow.countText:SetText("0 " .. L("items"))
     SetEAATextColor(lootWindow.countText,EAA_THEME.muted)
 
     local clear = CreateFrame("Button",nil,lootWindow,"UIPanelButtonTemplate")
     clear:SetWidth(70); clear:SetHeight(22)
     clear:SetPoint("BOTTOMRIGHT",-32,16)
-    clear:SetText("Clear")
+    clear:SetText(L("Clear"))
     SkinEAAButton(clear)
     clear:SetScript("OnClick",ClearLootHistory)
 
     local hint = lootWindow:CreateFontString(nil,"OVERLAY","GameFontDisableSmall")
     hint:SetPoint("BOTTOMLEFT",20,48)
-    hint:SetText("Newest first - up to 50 entries")
+    hint:SetText(L("Newest first - up to 50 entries"))
     SetEAATextColor(hint,EAA_THEME.muted)
     lootWindow.hint = hint
 
@@ -3561,7 +3826,7 @@ local function CreateLootWindow()
 
     local transparentText = transparentCheck:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
     transparentText:SetPoint("LEFT",transparentCheck,"RIGHT",2,0)
-    transparentText:SetText("Transparency")
+    transparentText:SetText(L("Transparency"))
     SetEAATextColor(transparentText,EAA_THEME.text)
 
     transparentCheck:SetScript("OnClick",function(self)
@@ -3574,13 +3839,13 @@ local function CreateLootWindow()
 
     local headerItem = lootWindow:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
     headerItem:SetPoint("TOPLEFT",20,-54)
-    headerItem:SetText("Item")
+    headerItem:SetText(L("Item"))
     SetEAATextColor(headerItem,EAA_THEME.cyan)
     lootWindow.headerItem = headerItem
 
     local headerAffix = lootWindow:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
     headerAffix:SetPoint("TOPRIGHT",-42,-54)
-    headerAffix:SetText("Tracked Affix")
+    headerAffix:SetText(L("Tracked Affix"))
     SetEAATextColor(headerAffix,EAA_THEME.cyan)
     lootWindow.headerAffix = headerAffix
 
@@ -3642,8 +3907,8 @@ local function CreateLootWindow()
                 GameTooltip:SetOwner(self,"ANCHOR_RIGHT")
                 GameTooltip:SetHyperlink(self.itemLink)
                 GameTooltip:AddLine(" ")
-                GameTooltip:AddLine("Shift-click: Link in chat",0.8,0.8,0.8)
-                GameTooltip:AddLine("Right-click: Remove from history",0.8,0.8,0.8)
+                GameTooltip:AddLine(L("Shift-click: Link in chat"),0.8,0.8,0.8)
+                GameTooltip:AddLine(L("Right-click: Remove from history"),0.8,0.8,0.8)
                 GameTooltip:Show()
             end
         end)
@@ -3696,8 +3961,8 @@ local function CreateLootWindow()
 
     resize:SetScript("OnEnter",function(self)
         GameTooltip:SetOwner(self,"ANCHOR_LEFT")
-        GameTooltip:AddLine("Resize Loot History")
-        GameTooltip:AddLine("Drag the corner to resize",1,1,1)
+        GameTooltip:AddLine(L("Resize Loot History"))
+        GameTooltip:AddLine(L("Drag the corner to resize"),1,1,1)
         GameTooltip:Show()
     end)
     resize:SetScript("OnLeave",function() GameTooltip:Hide() end)
@@ -3915,7 +4180,7 @@ local function RunTestAlert(isWeapon)
     DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[EAA]|r Test alert: "..affixText)
 
     AddStackedAlert(
-        "Tracked affix looted: "..affixText,
+        L("Tracked affix looted:").." "..affixText,
         isWeapon
     )
 end
@@ -3938,7 +4203,7 @@ local function AlertForLink(link, source)
     recentAlerts[alertKey] = now
 
     DEFAULT_CHAT_FRAME:AddMessage(
-        "|cff33ff99[EAA]|r Tracked affix looted: "
+        "|cff33ff99[EAA]|r " .. L("Tracked affix looted:") .. " "
         .. link .. " |cffffff00("
         .. affixName .. (rank and (" "..rank) or "") .. ")|r"
     )
@@ -3947,7 +4212,7 @@ local function AlertForLink(link, source)
 
     if EbonAffixAlertDB.announceToRaidWarning or EbonAffixAlertDB.alertSound then
         AddStackedAlert(
-            "Tracked affix looted: "..affixName..(rank and (" "..rank) or ""),
+            L("Tracked affix looted:").." "..affixName..(rank and (" "..rank) or ""),
             affixType == "Weapon"
         )
     end
@@ -4043,12 +4308,21 @@ local function CaptureBagSnapshot()
 end
 
 local function RefreshBagBaseline()
-    local current = CaptureBagSnapshot()
+    local current, currentLinks = CaptureBagSnapshot()
     bagSnapshot = current
+    if EbonAffixAlertEbonClearance and EbonAffixAlertEbonClearance.SyncFromLinks then
+        EbonAffixAlertEbonClearance.SyncFromLinks(currentLinks)
+    end
 end
 
 local function CheckBagChanges()
     local current, currentLinks = CaptureBagSnapshot()
+
+    -- Reuse this already-captured inventory view for the EbonClearance sync so
+    -- normal BAG_UPDATE handling does not perform a second bag scan.
+    if EbonAffixAlertEbonClearance and EbonAffixAlertEbonClearance.SyncFromLinks then
+        EbonAffixAlertEbonClearance.SyncFromLinks(currentLinks)
+    end
 
     -- During login/teleport/world transitions, bag APIs can temporarily report
     -- an incomplete inventory and then repopulate it. Refresh the baseline but
@@ -4145,6 +4419,7 @@ frame:SetScript("OnEvent",function(self,event,...)
         CreateLootWindow()
         CreateInterfaceOptionsPanel()
         InitializeBagHighlighting()
+        InitializeEbonClearanceIntegration()
         ApplyAffixIconsToRows()
         RequestEbonholdAffixIcons()
         RefreshBagBaseline()
@@ -4297,7 +4572,7 @@ CreateInterfaceOptionsPanel = function()
 
     local enableText = enable:CreateFontString(nil,"OVERLAY","GameFontNormal")
     enableText:SetPoint("LEFT",enable,"RIGHT",2,0)
-    enableText:SetText("Enable EbonAffixAlert")
+    enableText:SetText(L("Enable EbonAffixAlert"))
     SetEAATextColor(enableText,EAA_THEME.text)
 
     enable:SetScript("OnClick",function(self)
@@ -4312,7 +4587,7 @@ CreateInterfaceOptionsPanel = function()
 
     local commandsTitle = content:CreateFontString(nil,"OVERLAY","GameFontNormal")
     commandsTitle:SetPoint("TOPLEFT",18,-204)
-    commandsTitle:SetText("Commands")
+    commandsTitle:SetText(L("Commands"))
     SetEAATextColor(commandsTitle,EAA_THEME.cyan)
 
     local commandsHint = content:CreateFontString(nil,"OVERLAY","GameFontHighlightSmall")
@@ -4320,7 +4595,7 @@ CreateInterfaceOptionsPanel = function()
     commandsHint:SetWidth(330)
     commandsHint:SetJustifyH("LEFT")
     commandsHint:SetWordWrap(true)
-    commandsHint:SetText("Every EAA chat command is also available here:")
+    commandsHint:SetText(L("Every EAA chat command is also available here:"))
     SetEAATextColor(commandsHint,EAA_THEME.muted)
 
     local commands = {
@@ -4384,7 +4659,7 @@ CreateInterfaceOptionsPanel = function()
 
     local supportTitle = content:CreateFontString(nil,"OVERLAY","GameFontNormal")
     supportTitle:SetPoint("TOPLEFT",18,cursorY-4)
-    supportTitle:SetText("Support")
+    supportTitle:SetText(L("Support"))
     SetEAATextColor(supportTitle,EAA_THEME.cyan)
     cursorY = cursorY - 34
 
@@ -4392,7 +4667,7 @@ CreateInterfaceOptionsPanel = function()
     exportButton:SetWidth(170)
     exportButton:SetHeight(26)
     exportButton:SetPoint("TOPLEFT",18,cursorY)
-    exportButton:SetText("Export Tracked Config")
+    exportButton:SetText(L("Export Tracked Config"))
     SkinEAAButton(exportButton)
     exportButton:SetScript("OnClick",ShowTrackedConfigExport)
 
@@ -4401,13 +4676,13 @@ CreateInterfaceOptionsPanel = function()
     exportDesc:SetWidth(320)
     exportDesc:SetJustifyH("LEFT")
     exportDesc:SetWordWrap(true)
-    exportDesc:SetText("Creates selectable text showing exactly which affixes and ranks are tracked.")
+    exportDesc:SetText(L("Creates selectable text showing exactly which affixes and ranks are tracked."))
     SetEAATextColor(exportDesc,EAA_THEME.muted)
     cursorY = cursorY - 76
 
     local diagnosticsTitle = content:CreateFontString(nil,"OVERLAY","GameFontNormal")
     diagnosticsTitle:SetPoint("TOPLEFT",18,cursorY-4)
-    diagnosticsTitle:SetText("Diagnostics")
+    diagnosticsTitle:SetText(L("Diagnostics"))
     SetEAATextColor(diagnosticsTitle,EAA_THEME.cyan)
     cursorY = cursorY - 30
 
