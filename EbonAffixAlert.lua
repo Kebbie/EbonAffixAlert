@@ -1,4 +1,4 @@
--- Ebon Affix Alert v1.4.1
+-- Ebon Affix Alert v1.4.2
 -- WoW 3.3.5a compatible core
 
 -- General affixes: {name, fallback max rank}. Ebonhold API overrides rank when available.
@@ -240,9 +240,9 @@ end
 
 local function GetEAAVersion()
     if GetAddOnMetadata then
-        return GetAddOnMetadata("EbonAffixAlert","Version") or "1.4.1"
+        return GetAddOnMetadata("EbonAffixAlert","Version") or "1.4.2"
     end
-    return "1.4.1"
+    return "1.4.2"
 end
 
 -- Two lightweight skins; the selected style is saved in EbonAffixAlertDB.
