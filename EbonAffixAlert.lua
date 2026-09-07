@@ -1116,7 +1116,7 @@ end
 -- is removed from normal chat frames immediately after joining.
 -- ---------------------------------------------------------------------------
 local EAA_UPDATE_CHANNEL = "ebonaffixalert"
-local EAA_RELEASE_VERSION = "1.4.1"
+local EAA_RELEASE_VERSION = "1.4.2"
 
 
 local eaaUpdateDebug = false
@@ -1224,6 +1224,30 @@ local function EAAJoinUpdateChannel()
 end
 
 local EAA_UPDATE_WIRE_DELIMITER = "~"
+local EAA_UPDATE_VERSION_DELIMITER = "^"
+
+local function EAABuildVersionPayload()
+    return tostring(GetEAAVersion())
+        .. EAA_UPDATE_VERSION_DELIMITER
+        .. tostring(EAA_RELEASE_VERSION)
+end
+
+local function EAAParseVersionPayload(payload)
+    local text = tostring(payload or "")
+    local installed,release = string.match(text,"^([^%^]+)%^([^%^]+)$")
+    if installed and release then
+        return installed,release,false
+    end
+
+    -- Older EAA builds sent only one version value. Keep recognizing those
+    -- packets for compatibility/debugging, but do not treat that single value
+    -- as a trusted official-release advertisement.
+    if EAAParseVersion(text) then
+        return text,nil,true
+    end
+
+    return nil,nil,false
+end
 
 local function EAAQueueUpdateMessage(msgType,payload)
     if not eaaUpdateJoined then EAAJoinUpdateChannel() end
@@ -1262,24 +1286,33 @@ end
 local eaaManualUpdateCheckActive = false
 local eaaManualUpdateCheckFoundNewer = false
 
-local function EAAConsiderPeerVersion(verStr,sender)
-    local peerInt,peerMajor = EAAParseVersion(verStr)
-    local myInt,myMajor = EAAParseVersion(EAA_RELEASE_VERSION)
-    if not peerInt or not myInt then return end
+local function EAAConsiderPeerVersions(installedStr,releaseStr,sender,isLegacy)
+    local installedInt = EAAParseVersion(installedStr)
+    local releaseInt,releaseMajor = EAAParseVersion(releaseStr)
+    local myReleaseInt,myReleaseMajor = EAAParseVersion(EAA_RELEASE_VERSION)
 
     local me = UnitName and UnitName("player")
     if sender and me and sender == me then return end
 
-    -- Lightweight spoof guard: accept current-major and next-major versions,
-    -- but ignore absurd jumps advertised by an arbitrary chat-channel user.
-    if peerMajor > (myMajor + 1) then return end
-
-    if peerInt > eaaHighestSeenVersionInt then
-        eaaHighestSeenVersionInt = peerInt
-        eaaHighestSeenVersion = verStr
+    if isLegacy then
+        EAAUpdateDebugPrint("Legacy version packet from "
+            .. tostring(sender or "?") .. ": installed v"
+            .. tostring(installedStr or "?")
+            .. ", no advertised-release field; ignored for update notices.")
+        return
     end
 
-    if peerInt > myInt then
+    if not installedInt or not releaseInt or not myReleaseInt then return end
+
+    -- Lightweight spoof guard still applies to the advertised release.
+    if releaseMajor > (myReleaseMajor + 1) then return end
+
+    if releaseInt > eaaHighestSeenVersionInt then
+        eaaHighestSeenVersionInt = releaseInt
+        eaaHighestSeenVersion = releaseStr
+    end
+
+    if releaseInt > myReleaseInt then
         if eaaManualUpdateCheckActive then
             eaaManualUpdateCheckFoundNewer = true
         end
@@ -1287,9 +1320,9 @@ local function EAAConsiderPeerVersion(verStr,sender)
         if not eaaUpdateNudgeShown then
             eaaUpdateNudgeShown = true
             DEFAULT_CHAT_FRAME:AddMessage(
-            "|cff33ff99[EAA]|r |cffffff00Update available: v"
-            .. string.gsub(tostring(verStr),"^[vV]","")
-            .. "|r (you have v" .. tostring(EAA_RELEASE_VERSION) .. "). "
+                "|cff33ff99[EAA]|r |cffffff00Update available: v"
+                .. string.gsub(tostring(releaseStr),"^[vV]","")
+                .. "|r (you have v" .. tostring(EAA_RELEASE_VERSION) .. "). "
                 .. EAA_RELEASE_LINK
             )
         end
@@ -1319,9 +1352,27 @@ eaaUpdateFrame:SetScript("OnEvent",function(self,event,text,sender,_,channelName
     local prefix,msgType,payload = string.match(decoded,"^([^~]+)~([^~]+)~(.*)$")
     if prefix ~= EAA_UPDATE_WIRE_PREFIX then return end
 
-    EAAUpdateDebugPrint("RX #" .. tostring(channelNumber or "?")
-        .. " from " .. tostring(sender or "?")
-        .. ": " .. tostring(msgType) .. "|" .. tostring(payload))
+    local peerInstalled,peerRelease,legacyPayload = EAAParseVersionPayload(payload)
+
+    if (msgType == "VERQ" or msgType == "VERR") and peerInstalled then
+        if legacyPayload then
+            EAAUpdateDebugPrint("RX #" .. tostring(channelNumber or "?")
+                .. " from " .. tostring(sender or "?")
+                .. ": " .. tostring(msgType)
+                .. " | installed=v" .. tostring(peerInstalled)
+                .. " | advertised=legacy/unknown")
+        else
+            EAAUpdateDebugPrint("RX #" .. tostring(channelNumber or "?")
+                .. " from " .. tostring(sender or "?")
+                .. ": " .. tostring(msgType)
+                .. " | installed=v" .. tostring(peerInstalled)
+                .. " | advertised=v" .. tostring(peerRelease))
+        end
+    else
+        EAAUpdateDebugPrint("RX #" .. tostring(channelNumber or "?")
+            .. " from " .. tostring(sender or "?")
+            .. ": " .. tostring(msgType) .. "|" .. tostring(payload))
+    end
 
     if type(channelNumber) == "number" and channelNumber > 0 then
         if eaaUpdateChannelIndex ~= channelNumber then
@@ -1331,12 +1382,16 @@ eaaUpdateFrame:SetScript("OnEvent",function(self,event,text,sender,_,channelName
     end
 
     if msgType == "VERQ" then
-        EAAConsiderPeerVersion(payload,sender)
+        if peerInstalled then
+            EAAConsiderPeerVersions(peerInstalled,peerRelease,sender,legacyPayload)
+        end
         if sender and sender ~= (UnitName and UnitName("player")) then
-            EAAQueueUpdateMessage("VERR",EAA_RELEASE_VERSION)
+            EAAQueueUpdateMessage("VERR",EAABuildVersionPayload())
         end
     elseif msgType == "VERR" then
-        EAAConsiderPeerVersion(payload,sender)
+        if peerInstalled then
+            EAAConsiderPeerVersions(peerInstalled,peerRelease,sender,legacyPayload)
+        end
     elseif msgType == "RPNG" then
         if eaaUpdateSelfTestToken and payload == eaaUpdateSelfTestToken then
             eaaUpdateSelfTestEchoed = true
@@ -1363,7 +1418,7 @@ eaaUpdateFrame:SetScript("OnUpdate",function(self,delta)
     if not eaaUpdateQuerySent and eaaUpdateJoinStartedAt
         and GetTime() - eaaUpdateJoinStartedAt >= 2 then
         eaaUpdateQuerySent = true
-        EAAQueueUpdateMessage("VERQ",EAA_RELEASE_VERSION)
+        EAAQueueUpdateMessage("VERQ",EAABuildVersionPayload())
     end
 
     if #eaaUpdateQueue == 0 or GetTime() < eaaUpdateNextSend then return end
@@ -1458,7 +1513,7 @@ local function EAARequestManualUpdateCheck()
     eaaManualUpdateCheckEndsAt = now + EAA_MANUAL_UPDATE_RESULT_DELAY
 
     EAAJoinUpdateChannel()
-    EAAQueueUpdateMessage("VERQ",EAA_RELEASE_VERSION)
+    EAAQueueUpdateMessage("VERQ",EAABuildVersionPayload())
 
     DEFAULT_CHAT_FRAME:AddMessage(
         "|cff33ff99[EAA]|r Checking the realm for newer EAA versions..."

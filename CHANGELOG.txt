@@ -1,5 +1,11 @@
 # Ebon Affix Alert Changelog
 
+## v1.4.2 - 2026-09-07
+
+- Updated the realm update protocol to advertise the installed addon version and official advertised release version separately.
+- Legacy single-version peer responses are no longer trusted for update-available notifications.
+- Improved update debug output to show peer installed and advertised versions separately.
+
 ## v1.4.1 - 2026-09-06
 
 - Added an addon language selector to the main EAA window.
