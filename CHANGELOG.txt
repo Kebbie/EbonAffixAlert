@@ -1,5 +1,12 @@
 # Ebon Affix Alert Changelog
 
+## v1.5.0 - 2026-09-12
+- Added Unknown Affix Mode. General affix ranks and Weapon affixes not present in Project Ebonhold's learned-affix data are automatically tracked when enabled.
+- Manual tracked selections remain independent, allowing already-learned affixes to be tracked normally at the same time.
+- Added a help button beside Unknown Affix Mode that lists the currently unknown General ranks and Weapon affixes.
+- Added an explanatory hover tooltip for Unknown Affix Mode.
+- Added an Extra Features footer section for EbonClearance and Unknown Affix Mode options.
+
 ## v1.4.2 - 2026-09-07
 
 - Updated the realm update protocol to advertise the installed addon version and official advertised release version separately.

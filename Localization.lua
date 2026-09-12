@@ -13,6 +13,14 @@ M.languages = {
 }
 
 local fr = {
+    ["Extra Features"] = "Fonctions supplémentaires",
+    ["Automatically tracks affixes and General ranks you have not learned yet. Manual tracking remains active too."] = "Suit automatiquement les affixes et rangs généraux que vous n\'avez pas encore appris. Le suivi manuel reste également actif.",
+    ["Track unknown affixes"] = "Suivre les affixes inconnus",
+    ["Unknown Affixes"] = "Affixes inconnus",
+    ["These affixes/ranks have not been learned and are automatically tracked while Unknown Affix Mode is enabled."] = "Ces affixes/rangs ne sont pas appris et sont suivis automatiquement lorsque le mode Affixes inconnus est activé.",
+    ["Waiting for Project Ebonhold learned-affix data."] = "En attente des données d'affixes appris de Project Ebonhold.",
+    ["(none)"] = "(aucun)",
+
     ["Tracked affix looted:"] = "Affixe suivi obtenu :",
     ["Language:"] = "Langue :",
     ["Style:"] = "Style :",
@@ -86,6 +94,14 @@ local fr = {
 
 
 local de = {
+    ["Extra Features"] = "Zusatzfunktionen",
+    ["Automatically tracks affixes and General ranks you have not learned yet. Manual tracking remains active too."] = "Verfolgt automatisch Affixe und allgemeine Ränge, die du noch nicht erlernt hast. Die manuelle Verfolgung bleibt ebenfalls aktiv.",
+    ["Track unknown affixes"] = "Unbekannte Affixe verfolgen",
+    ["Unknown Affixes"] = "Unbekannte Affixe",
+    ["These affixes/ranks have not been learned and are automatically tracked while Unknown Affix Mode is enabled."] = "Diese Affixe/Ränge wurden noch nicht erlernt und werden automatisch verfolgt, solange der Modus für unbekannte Affixe aktiviert ist.",
+    ["Waiting for Project Ebonhold learned-affix data."] = "Warte auf Daten zu erlernten Affixen von Project Ebonhold.",
+    ["(none)"] = "(keine)",
+
     ["Tracked affix looted:"] = "Verfolgtes Affix erbeutet:",
     ["Language:"] = "Sprache:",
     ["Style:"] = "Stil:",
@@ -159,6 +175,14 @@ local de = {
 
 
 local es = {
+    ["Extra Features"] = "Funciones extra",
+    ["Automatically tracks affixes and General ranks you have not learned yet. Manual tracking remains active too."] = "Sigue automáticamente los afijos y rangos generales que aún no has aprendido. El seguimiento manual también permanece activo.",
+    ["Track unknown affixes"] = "Seguir afijos desconocidos",
+    ["Unknown Affixes"] = "Afijos desconocidos",
+    ["These affixes/ranks have not been learned and are automatically tracked while Unknown Affix Mode is enabled."] = "Estos afijos/rangos no se han aprendido y se siguen automáticamente mientras está activado el modo de afijos desconocidos.",
+    ["Waiting for Project Ebonhold learned-affix data."] = "Esperando los datos de afijos aprendidos de Project Ebonhold.",
+    ["(none)"] = "(ninguno)",
+
     ["Tracked affix looted:"] = "Afijo seguido obtenido:",
     ["Language:"] = "Idioma:",
     ["Style:"] = "Estilo:",

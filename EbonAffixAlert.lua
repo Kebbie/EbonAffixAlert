@@ -1,4 +1,4 @@
--- Ebon Affix Alert v1.4.2
+-- Ebon Affix Alert v1.5.0
 -- WoW 3.3.5a compatible core
 
 -- General affixes: {name, fallback max rank}. Ebonhold API overrides rank when available.
@@ -139,6 +139,13 @@ local ApplyAffixIconsToRows
 local ShowAffixTooltip
 local supportCopyWindow
 local RefreshLocalizedText
+local RefreshChecks
+local ShowCopyTextWindow
+local L = EAA_L or function(text) return text end
+local unknownAutoTracked = {}
+local unknownAffixDataReady = false
+local unknownChatDumpPending = false
+local PrintUnknownAffixTrackingToChat
 local function RefreshVisibleBagHighlights()
     if EbonAffixAlertBagHighlights and EbonAffixAlertBagHighlights.RefreshVisible then
         EbonAffixAlertBagHighlights.RefreshVisible()
@@ -192,6 +199,9 @@ local function EnsureDB()
     if EbonAffixAlertDB.ebonClearanceKeep == nil then
         EbonAffixAlertDB.ebonClearanceKeep = true
     end
+    if EbonAffixAlertDB.trackUnknownAffixes == nil then
+        EbonAffixAlertDB.trackUnknownAffixes = false
+    end
     if EbonAffixAlertDB.debug == nil then EbonAffixAlertDB.debug = false end
     if EbonAffixAlertDB.uiStyle == nil then EbonAffixAlertDB.uiStyle = "Modern" end
     if EbonAffixAlertDB.uiStyle ~= "Modern" and EbonAffixAlertDB.uiStyle ~= "Fantasy" then
@@ -238,11 +248,160 @@ local function WKey(name)
     return "WEAPON:" .. name
 end
 
+local function CanonicalLearnedAffixBase(name)
+    if name == "Block" then return "Shield Block" end
+    return name
+end
+
+local function IsSelectionEffectivelyTracked(key)
+    if EbonAffixAlertDB and EbonAffixAlertDB.tracked and EbonAffixAlertDB.tracked[key] then
+        return true
+    end
+    return EbonAffixAlertDB
+        and EbonAffixAlertDB.trackUnknownAffixes
+        and unknownAffixDataReady
+        and unknownAutoTracked[key]
+        and true or false
+end
+
+local function GetKnownMaxRankForUnknownMode(name)
+    local fallback = GetConfiguredFallbackRank(name) or 1
+    local serverMax = GetMaxRankForAffix(name) or 1
+    return math.min(math.max(fallback,serverMax),10)
+end
+
+local function RefreshUnknownAffixTrackingFromEbonhold(allowEmpty)
+    local svc = _G.ExtractionService
+    if not svc or type(svc.learnedAffixes) ~= "table" then
+        unknownAffixDataReady = false
+        unknownAutoTracked = {}
+        return false
+    end
+    if #svc.learnedAffixes == 0 and not allowEmpty then return false end
+
+    local learned = {}
+    local _,affix
+    for _,affix in ipairs(svc.learnedAffixes) do
+        if affix
+            and affix.learned == true
+            and type(affix.name) == "string"
+            and affix.name ~= "" then
+
+            local base,romanRank = string.match(affix.name,"^(.-)%s+([IVXLCivxlc]+)$")
+            base = CanonicalLearnedAffixBase(base or affix.name)
+            if romanRank then
+                local rank = romanToNumber[string.upper(romanRank)]
+                if rank then learned[GKey(base,rank)] = true end
+            else
+                learned[WKey(base)] = true
+            end
+        end
+    end
+
+    local updated = {}
+    local _,entry,rank,name
+    for _,entry in ipairs(generalAffixes) do
+        name = entry[1]
+        for rank=1,GetKnownMaxRankForUnknownMode(name) do
+            local key = GKey(name,rank)
+            if not learned[key] then updated[key] = true end
+        end
+    end
+    for _,name in ipairs(weaponAffixes) do
+        local key = WKey(name)
+        if not learned[key] then updated[key] = true end
+    end
+
+    unknownAutoTracked = updated
+    unknownAffixDataReady = true
+
+    if panel and panel:IsShown() and RefreshChecks then
+        RefreshChecks()
+    elseif RefreshVisibleBagHighlights then
+        RefreshVisibleBagHighlights()
+    end
+
+    if unknownChatDumpPending and PrintUnknownAffixTrackingToChat then
+        unknownChatDumpPending = false
+        PrintUnknownAffixTrackingToChat()
+    end
+
+    return true
+end
+
+local function BuildUnknownAffixListText()
+    if not unknownAffixDataReady then
+        return L("Waiting for Project Ebonhold learned-affix data.")
+    end
+
+    local lines = {
+        L("These affixes/ranks have not been learned and are automatically tracked while Unknown Affix Mode is enabled."),
+        "",
+        "[" .. L("General") .. "]"
+    }
+    local generalCount = 0
+    local _,entry,rank,name
+    for _,entry in ipairs(generalAffixes) do
+        name = entry[1]
+        local ranks = {}
+        for rank=1,GetKnownMaxRankForUnknownMode(name) do
+            if unknownAutoTracked[GKey(name,rank)] then
+                table.insert(ranks,roman[rank] or tostring(rank))
+            end
+        end
+        if #ranks > 0 then
+            table.insert(lines,name .. ": " .. table.concat(ranks,", "))
+            generalCount = generalCount + 1
+        end
+    end
+    if generalCount == 0 then table.insert(lines,L("(none)")) end
+
+    table.insert(lines,"")
+    table.insert(lines,"[" .. L("Weapon") .. "]")
+    local weaponCount = 0
+    for _,name in ipairs(weaponAffixes) do
+        if unknownAutoTracked[WKey(name)] then
+            table.insert(lines,name)
+            weaponCount = weaponCount + 1
+        end
+    end
+    if weaponCount == 0 then table.insert(lines,L("(none)")) end
+    return table.concat(lines,"\n")
+end
+
+local function ShowUnknownAffixList()
+    if ShowCopyTextWindow then
+        ShowCopyTextWindow(
+            "EAA - " .. L("Unknown Affixes"),
+            BuildUnknownAffixListText()
+        )
+    else
+        DEFAULT_CHAT_FRAME:AddMessage(
+            "|cff33ff99[EAA]|r " .. L("Unknown Affixes") .. ": "
+            .. L("Waiting for Project Ebonhold learned-affix data.")
+        )
+    end
+end
+
+PrintUnknownAffixTrackingToChat = function()
+    DEFAULT_CHAT_FRAME:AddMessage(
+        "|cff33ff99[EAA]|r |cffffff00Unknown Affix Mode - temporary test output:|r"
+    )
+
+    local text = BuildUnknownAffixListText()
+    local line
+    for line in string.gmatch(text .. "\n","([^\n]*)\n") do
+        if line and line ~= "" then
+            DEFAULT_CHAT_FRAME:AddMessage("|cff33ff99[EAA]|r " .. line)
+        end
+    end
+end
+
 local function GetEAAVersion()
     if GetAddOnMetadata then
-        return GetAddOnMetadata("EbonAffixAlert","Version") or "1.4.2"
+        return GetAddOnMetadata("EbonAffixAlert","Version") or "1.5.0"
     end
-    return "1.4.2"
+    return "1.5.0"
 end
 
 -- Two lightweight skins; the selected style is saved in EbonAffixAlertDB.
@@ -292,7 +451,6 @@ local EAA_THEMES = {
 local EAA_THEME = EAA_THEMES.Modern
 local EAA_THEME_NAME = "Modern"
 local EAA_MEDIA_PATH = "Interface\\AddOns\\EbonAffixAlert\\Media\\"
-local L = EAA_L or function(text) return text end
 local eaaThemedFrames = {}
 local eaaThemedInsets = {}
 local eaaThemedButtons = {}
@@ -756,6 +914,9 @@ local function SetEAATheme(styleName)
         if panel.interfaceFantasyDivider then
             if styleName == "Fantasy" then panel.interfaceFantasyDivider:Show() else panel.interfaceFantasyDivider:Hide() end
         end
+        if panel.extraFeaturesFantasyDivider then
+            if styleName == "Fantasy" then panel.extraFeaturesFantasyDivider:Show() else panel.extraFeaturesFantasyDivider:Hide() end
+        end
         if panel.footerLine then
             if styleName == "Fantasy" then panel.footerLine:Hide() else panel.footerLine:Show() end
         end
@@ -1022,13 +1183,14 @@ local function ClearEAACache()
     RescanEbonholdIcons()
 end
 
-local function ShowCopyTextWindow(titleText, bodyText)
+ShowCopyTextWindow = function(titleText, bodyText)
     if not supportCopyWindow then
         local f = CreateFrame("Frame","EbonAffixAlertCopyWindow",UIParent)
         f:SetWidth(620)
         f:SetHeight(440)
         f:SetPoint("CENTER")
-        f:SetFrameStrata("DIALOG")
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:SetFrameLevel(100)
         ApplyEAAFrameSkin(f)
         f:EnableMouse(true)
         f:SetMovable(true)
@@ -1100,6 +1262,9 @@ local function ShowCopyTextWindow(titleText, bodyText)
         supportCopyWindow = f
     end
 
+    supportCopyWindow:SetFrameStrata("FULLSCREEN_DIALOG")
+    supportCopyWindow:SetFrameLevel(100)
+    supportCopyWindow:Raise()
     supportCopyWindow.title:SetText(titleText or "EbonAffixAlert")
     supportCopyWindow.edit:SetText(bodyText or "")
     supportCopyWindow.edit:SetCursorPosition(0)
@@ -1115,8 +1280,9 @@ end
 -- hidden named chat channel. Only tiny version messages are sent. The channel
 -- is removed from normal chat frames immediately after joining.
 -- ---------------------------------------------------------------------------
-local EAA_UPDATE_CHANNEL = "ebonaffixalert"
-local EAA_RELEASE_VERSION = "1.4.2"
+local EAA_UPDATE_CHANNEL = "ebonaffixalert2"
+local EAA_OLD_UPDATE_CHANNEL = "ebonaffixalert"
+local EAA_RELEASE_VERSION = "1.5.0"
 
 
 local eaaUpdateDebug = false
@@ -1202,6 +1368,25 @@ local function EAAHideUpdateChannel()
     end
 end
 
+local function EAALeaveOldUpdateChannel()
+    if not LeaveChannelByName then return end
+
+    local oldIndex = nil
+    if GetChannelName then
+        oldIndex = tonumber((GetChannelName(EAA_OLD_UPDATE_CHANNEL)))
+    end
+
+    LeaveChannelByName(EAA_OLD_UPDATE_CHANNEL)
+
+    if oldIndex and oldIndex > 0 then
+        EAAUpdateDebugPrint("Left legacy update channel: "
+            .. EAA_OLD_UPDATE_CHANNEL .. " (#" .. tostring(oldIndex) .. ").")
+    else
+        EAAUpdateDebugPrint("Legacy update channel not joined: "
+            .. EAA_OLD_UPDATE_CHANNEL .. ".")
+    end
+end
+
 local function EAAJoinUpdateChannel()
     if eaaUpdateJoined then
         EAAUpdateDebugPrint("Join skipped; channel already marked joined.")
@@ -1210,6 +1395,9 @@ local function EAAJoinUpdateChannel()
 
     eaaUpdateJoined = true
     eaaUpdateJoinStartedAt = GetTime()
+
+    EAALeaveOldUpdateChannel()
+
     eaaUpdateChannelIndex = EAAFindUpdateChannel()
 
     if not eaaUpdateChannelIndex and JoinChannelByName then
@@ -1299,6 +1487,12 @@ local function EAAConsiderPeerVersions(installedStr,releaseStr,sender,isLegacy)
             .. tostring(sender or "?") .. ": installed v"
             .. tostring(installedStr or "?")
             .. ", no advertised-release field; ignored for update notices.")
+        return
+    end
+
+    if releaseStr == "1.5.3" or releaseStr == "v1.5.3" or releaseStr == "V1.5.3" then
+        EAAUpdateDebugPrint("Ignored unofficial advertised release v1.5.3 from "
+            .. tostring(sender or "?") .. ".")
         return
     end
 
@@ -1792,6 +1986,8 @@ RefreshAffixIconsFromEbonhold = function()
         ApplyAffixIconsToRows()
     end
 
+    RefreshUnknownAffixTrackingFromEbonhold(false)
+
     if panel and panel:IsShown() then
         -- Re-open/refresh settings to pick up newly published ranks.
         panel:Hide()
@@ -1869,7 +2065,10 @@ RequestEbonholdAffixIcons = function()
         elapsed = 0
         attempts = attempts + 1
 
-        if RefreshAffixIconsFromEbonhold() or attempts >= 10 then
+        if RefreshAffixIconsFromEbonhold() then
+            self:SetScript("OnUpdate",nil)
+        elseif attempts >= 10 then
+            RefreshUnknownAffixTrackingFromEbonhold(true)
             self:SetScript("OnUpdate",nil)
         end
     end)
@@ -1898,13 +2097,13 @@ local function UpdateStatusText()
     end
 end
 
-local function RefreshChecks()
+RefreshChecks = function()
     local _, cb
     for _, cb in ipairs(generalChecks) do
-        cb:SetChecked(EbonAffixAlertDB.tracked[cb.key] and 1 or nil)
+        cb:SetChecked(IsSelectionEffectivelyTracked(cb.key) and 1 or nil)
     end
     for _, cb in ipairs(weaponChecks) do
-        cb:SetChecked(EbonAffixAlertDB.tracked[cb.key] and 1 or nil)
+        cb:SetChecked(IsSelectionEffectivelyTracked(cb.key) and 1 or nil)
     end
     if panel then
         panel.enableCheck:SetChecked(EbonAffixAlertDB.enabled and 1 or nil)
@@ -1915,6 +2114,9 @@ local function RefreshChecks()
         end
         if panel.ebonClearanceKeepCheck then
             panel.ebonClearanceKeepCheck:SetChecked(EbonAffixAlertDB.ebonClearanceKeep and 1 or nil)
+        end
+        if panel.unknownAffixCheck then
+            panel.unknownAffixCheck:SetChecked(EbonAffixAlertDB.trackUnknownAffixes and 1 or nil)
         end
         panel.minimapCheck:SetChecked(EbonAffixAlertDB.minimap.show and 1 or nil)
         panel.lootWindowCheck:SetChecked(EbonAffixAlertDB.lootWindow.show and 1 or nil)
@@ -2366,6 +2568,7 @@ local function CreatePanel()
                         ApplyAffixFilters()
                     end
                     if RefreshVisibleBagHighlights then RefreshVisibleBagHighlights() end
+                    if EbonAffixAlertDB.trackUnknownAffixes and RefreshChecks then RefreshChecks() end
                 end)
                 table.insert(generalChecks,cb)
                 table.insert(rowChecks,cb)
@@ -2453,6 +2656,7 @@ local function CreatePanel()
                 ApplyAffixFilters()
             end
             if RefreshVisibleBagHighlights then RefreshVisibleBagHighlights() end
+            if EbonAffixAlertDB.trackUnknownAffixes and RefreshChecks then RefreshChecks() end
         end)
         local hover = CreateFrame("Frame",nil,wc)
         hover:SetWidth(215)
@@ -2524,6 +2728,7 @@ local function CreatePanel()
                         end
                         if trackedOnly and ApplyAffixFilters then ApplyAffixFilters() end
                         if RefreshVisibleBagHighlights then RefreshVisibleBagHighlights() end
+                        if EbonAffixAlertDB.trackUnknownAffixes and RefreshChecks then RefreshChecks() end
                     end)
                     table.insert(generalChecks,cb)
                     table.insert(rowInfo.checks,cb)
@@ -2558,7 +2763,7 @@ local function CreatePanel()
             local matchesText = (query == "") or string.find(string.lower(rowInfo.name),query,1,true)
             local hasTracked = false
             for _,cb in ipairs(rowInfo.checks) do
-                if EbonAffixAlertDB.tracked[cb.key] then
+                if IsSelectionEffectivelyTracked(cb.key) then
                     hasTracked = true
                     break
                 end
@@ -2617,7 +2822,7 @@ local function CreatePanel()
         local _, wrow
         for _,wrow in ipairs(weaponRows) do
             local matchesText = (query == "") or string.find(string.lower(wrow.name),query,1,true)
-            local hasTracked = EbonAffixAlertDB.tracked[wrow.check.key] and true or false
+            local hasTracked = IsSelectionEffectivelyTracked(wrow.check.key)
             local visible = matchesText and ((not trackedOnly) or hasTracked)
 
             if visible then
@@ -2726,29 +2931,47 @@ local function CreatePanel()
     alertSection:SetPoint("BOTTOMLEFT",24,82)
     alertSection:SetText(L("Alerts"))
     SetEAATextColor(alertSection,EAA_THEME.cyan)
+    panel.alertSectionText = alertSection
 
     local interfaceSection = panel:CreateFontString(nil,"OVERLAY","GameFontNormal")
-    interfaceSection:SetPoint("BOTTOMLEFT",300,82)
+    interfaceSection:SetPoint("BOTTOMLEFT",220,82)
     interfaceSection:SetText(L("Interface"))
     SetEAATextColor(interfaceSection,EAA_THEME.cyan)
+    panel.interfaceSectionText = interfaceSection
+
+    local extraFeaturesSection = panel:CreateFontString(nil,"OVERLAY","GameFontNormal")
+    extraFeaturesSection:SetPoint("BOTTOMLEFT",416,82)
+    extraFeaturesSection:SetWidth(170)
+    extraFeaturesSection:SetJustifyH("LEFT")
+    extraFeaturesSection:SetText(L("Extra Features"))
+    SetEAATextColor(extraFeaturesSection,EAA_THEME.cyan)
+    panel.extraFeaturesSectionText = extraFeaturesSection
 
     local alertsDivider = panel:CreateTexture(nil,"ARTWORK")
     alertsDivider:SetTexture(EAA_MEDIA_PATH .. "FantasyDivider")
     alertsDivider:SetPoint("LEFT",alertSection,"RIGHT",8,0)
-    alertsDivider:SetWidth(160)
+    alertsDivider:SetWidth(106)
     alertsDivider:SetHeight(16)
     panel.alertsFantasyDivider = alertsDivider
 
     local interfaceDivider = panel:CreateTexture(nil,"ARTWORK")
     interfaceDivider:SetTexture(EAA_MEDIA_PATH .. "FantasyDivider")
     interfaceDivider:SetPoint("LEFT",interfaceSection,"RIGHT",8,0)
-    interfaceDivider:SetWidth(142)
+    interfaceDivider:SetWidth(94)
     interfaceDivider:SetHeight(16)
     panel.interfaceFantasyDivider = interfaceDivider
+
+    local extraFeaturesDivider = panel:CreateTexture(nil,"ARTWORK")
+    extraFeaturesDivider:SetTexture(EAA_MEDIA_PATH .. "FantasyDivider")
+    extraFeaturesDivider:SetPoint("LEFT",extraFeaturesSection,"RIGHT",8,0)
+    extraFeaturesDivider:SetWidth(42)
+    extraFeaturesDivider:SetHeight(16)
+    panel.extraFeaturesFantasyDivider = extraFeaturesDivider
 
     if EAA_THEME_NAME ~= "Fantasy" then
         alertsDivider:Hide()
         interfaceDivider:Hide()
+        extraFeaturesDivider:Hide()
     end
 
     local footerLine = CreateEAAAccentLine(panel)
@@ -2805,6 +3028,8 @@ local function CreatePanel()
     minimapCheck:SetPoint("BOTTOMLEFT",220,57)
     local mt = minimapCheck:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
     mt:SetPoint("LEFT",minimapCheck,"RIGHT",2,0)
+    mt:SetWidth(162)
+    mt:SetJustifyH("LEFT")
     mt:SetText(L("Show minimap icon"))
     SetEAATextColor(mt,EAA_THEME.text)
     minimapCheck:SetScript("OnClick",function(self)
@@ -2822,6 +3047,8 @@ local function CreatePanel()
     lootWindowCheck:SetPoint("BOTTOMLEFT",220,32)
     local lwt = lootWindowCheck:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
     lwt:SetPoint("LEFT",lootWindowCheck,"RIGHT",2,0)
+    lwt:SetWidth(162)
+    lwt:SetJustifyH("LEFT")
     lwt:SetText(L("Show loot history window"))
     SetEAATextColor(lwt,EAA_THEME.text)
     lootWindowCheck:SetScript("OnClick",function(self)
@@ -2843,6 +3070,8 @@ local function CreatePanel()
     bagHighlightCheck:SetPoint("BOTTOMLEFT",220,7)
     local bht = bagHighlightCheck:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
     bht:SetPoint("LEFT",bagHighlightCheck,"RIGHT",2,0)
+    bht:SetWidth(162)
+    bht:SetJustifyH("LEFT")
     bht:SetText(L("Highlight tracked bag items"))
     SetEAATextColor(bht,EAA_THEME.text)
     bagHighlightCheck:SetScript("OnClick",function(self)
@@ -2918,6 +3147,72 @@ local function CreatePanel()
     panel.ebonClearanceKeepCheck = ebonClearanceKeepCheck
     panel.ebonClearanceKeepText = eckt
 
+    local unknownAffixCheck = CreateFrame("CheckButton",nil,panel,"UICheckButtonTemplate")
+    SkinEAACheckbox(unknownAffixCheck)
+    unknownAffixCheck:SetWidth(24); unknownAffixCheck:SetHeight(24)
+    unknownAffixCheck:SetPoint("BOTTOMLEFT",416,17)
+
+    local uat = unknownAffixCheck:CreateFontString(nil,"OVERLAY","GameFontNormalSmall")
+    uat:SetPoint("LEFT",unknownAffixCheck,"RIGHT",2,0)
+    uat:SetWidth(122)
+    uat:SetJustifyH("LEFT")
+    uat:SetText(L("Track unknown affixes"))
+    SetEAATextColor(uat,EAA_THEME.text)
+
+    local unknownHelp = CreateFrame("Button",nil,panel,"UIPanelButtonTemplate")
+    unknownHelp:SetWidth(22); unknownHelp:SetHeight(22)
+    unknownHelp:SetPoint("BOTTOMRIGHT",panel,"BOTTOMRIGHT",-24,18)
+    unknownHelp:SetText("?")
+    unknownHelp:RegisterForClicks("LeftButtonUp")
+    unknownHelp:SetFrameLevel(panel:GetFrameLevel() + 5)
+    SkinEAAButton(unknownHelp)
+    unknownHelp:SetScript("OnClick",function()
+        if _G.ExtractionService and ExtractionService.RequestLearnedAffixes then
+            pcall(ExtractionService.RequestLearnedAffixes)
+        end
+
+        local readyNow = RefreshUnknownAffixTrackingFromEbonhold(false)
+        ShowUnknownAffixList()
+
+        if not readyNow and RequestEbonholdAffixIcons then
+            RequestEbonholdAffixIcons()
+        end
+    end)
+
+    unknownAffixCheck:SetScript("OnEnter",function(self)
+        GameTooltip:SetOwner(self,"ANCHOR_TOP")
+        GameTooltip:ClearLines()
+        GameTooltip:AddLine(L("Track unknown affixes"),1,0.82,0)
+        GameTooltip:AddLine(
+            L("Automatically tracks affixes and General ranks you have not learned yet. Manual tracking remains active too."),
+            1,1,1,true
+        )
+        GameTooltip:Show()
+    end)
+    unknownAffixCheck:SetScript("OnLeave",function() GameTooltip:Hide() end)
+
+    unknownAffixCheck:SetScript("OnClick",function(self)
+        EbonAffixAlertDB.trackUnknownAffixes = self:GetChecked() and true or false
+        unknownChatDumpPending = false
+
+        if EbonAffixAlertDB.trackUnknownAffixes then
+            if _G.ExtractionService and ExtractionService.RequestLearnedAffixes then
+                pcall(ExtractionService.RequestLearnedAffixes)
+            end
+            RefreshUnknownAffixTrackingFromEbonhold(false)
+            if RequestEbonholdAffixIcons then
+                RequestEbonholdAffixIcons()
+            end
+        end
+
+        RefreshChecks()
+        if RefreshVisibleBagHighlights then RefreshVisibleBagHighlights() end
+    end)
+
+    panel.unknownAffixCheck = unknownAffixCheck
+    panel.unknownAffixText = uat
+    panel.unknownAffixHelp = unknownHelp
+
     RefreshGeneralRankControls()
     panel:SetScript("OnShow",function()
         SetEAATheme(EbonAffixAlertDB.uiStyle or "Modern")
@@ -2960,6 +3255,9 @@ RefreshLocalizedText = function()
             end
         end
     end
+    if panel.alertSectionText then panel.alertSectionText:SetText(L("Alerts")) end
+    if panel.interfaceSectionText then panel.interfaceSectionText:SetText(L("Interface")) end
+    if panel.extraFeaturesSectionText then panel.extraFeaturesSectionText:SetText(L("Extra Features")) end
     if panel.enableText then panel.enableText:SetText(L("Enable loot tracking")) end
     if panel.raidText then panel.raidText:SetText(L("Large on-screen alert")) end
     if panel.soundText then panel.soundText:SetText(L("Alert Sound")) end
@@ -2968,6 +3266,9 @@ RefreshLocalizedText = function()
     if panel.bagHighlightText then panel.bagHighlightText:SetText(L("Highlight tracked bag items")) end
     if panel.ebonClearanceKeepText then
         panel.ebonClearanceKeepText:SetText(L("Auto-Keep tracked items\nin EbonClearance"))
+    end
+    if panel.unknownAffixText then
+        panel.unknownAffixText:SetText(L("Track unknown affixes"))
     end
 
     -- Static page headers/buttons can be found by the references assigned when
@@ -3419,9 +3720,7 @@ local function FindTrackedWeaponAffixByItemName(itemName)
     local affixName = WEAPON_AFFIX_BY_ITEM_NAME[itemName]
     if not affixName then return nil end
 
-    if EbonAffixAlertDB
-        and EbonAffixAlertDB.tracked
-        and EbonAffixAlertDB.tracked[WKey(affixName)] then
+    if IsSelectionEffectivelyTracked(WKey(affixName)) then
 
         if EbonAffixAlertDB.debug then
             DEFAULT_CHAT_FRAME:AddMessage(
@@ -3444,7 +3743,7 @@ local function FindTrackedAffix(itemName)
         local affixName = entry[1]
         local maxRank = GetMaxRankForAffix(affixName)
         for rank=maxRank,1,-1 do
-            if EbonAffixAlertDB.tracked[GKey(affixName,rank)] then
+            if IsSelectionEffectivelyTracked(GKey(affixName,rank)) then
                 local itemAffixName = affixName
 
                 -- Project Ebonhold displays the "Shield Block" affix on items
@@ -4800,6 +5099,48 @@ CreateInterfaceOptionsPanel = function()
     end
 end
 
+local function SetUnknownAffixTrackingEnabled(enabled,printList)
+    EbonAffixAlertDB.trackUnknownAffixes = enabled and true or false
+
+    if panel and panel.unknownAffixCheck then
+        panel.unknownAffixCheck:SetChecked(EbonAffixAlertDB.trackUnknownAffixes and 1 or nil)
+    end
+
+    if EbonAffixAlertDB.trackUnknownAffixes then
+        unknownChatDumpPending = printList and true or false
+
+        if _G.ExtractionService and ExtractionService.RequestLearnedAffixes then
+            pcall(ExtractionService.RequestLearnedAffixes)
+        end
+
+        local readyNow = RefreshUnknownAffixTrackingFromEbonhold(false)
+        if readyNow and printList and PrintUnknownAffixTrackingToChat then
+            unknownChatDumpPending = false
+            PrintUnknownAffixTrackingToChat()
+        elseif not readyNow and printList then
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cff33ff99[EAA]|r Unknown Affix Mode enabled; waiting for Project Ebonhold learned-affix data before printing the tracked list."
+            )
+        end
+
+        if RequestEbonholdAffixIcons then
+            RequestEbonholdAffixIcons()
+        end
+    else
+        unknownChatDumpPending = false
+    end
+
+    RefreshChecks()
+    if RefreshVisibleBagHighlights then
+        RefreshVisibleBagHighlights()
+    end
+
+    DEFAULT_CHAT_FRAME:AddMessage(
+        "|cff33ff99[EAA]|r Track unknown affixes "
+        .. (EbonAffixAlertDB.trackUnknownAffixes and "|cff00ff00ON|r." or "|cffff5555OFF|r.")
+    )
+end
+
 function EbonAffixAlert_HandleSlash(msg)
     msg = string.gsub(msg or "","^%s*(.-)%s*$","%1")
 
@@ -4859,6 +5200,18 @@ function EbonAffixAlert_HandleSlash(msg)
         return
     elseif msg == "clearcache" or msg == "cache" then
         ClearEAACache()
+        return
+    elseif msg == "unknowntrack" then
+        SetUnknownAffixTrackingEnabled(
+            not EbonAffixAlertDB.trackUnknownAffixes,
+            true
+        )
+        return
+    elseif msg == "unknowntrack on" then
+        SetUnknownAffixTrackingEnabled(true,true)
+        return
+    elseif msg == "unknowntrack off" then
+        SetUnknownAffixTrackingEnabled(false,false)
         return
     elseif msg == "loot" then
         EbonAffixAlertDB.lootWindow.show = not EbonAffixAlertDB.lootWindow.show

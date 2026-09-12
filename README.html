@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ebon Affix Alert (<strong>EAA</strong>) - README</title>
+<title>Ebon Affix Alert (EAA) - README</title>
 <style>
 :root {
   --bg: #070913;
@@ -33,35 +33,10 @@ main {
   margin: 0 auto;
   padding: 48px 54px 72px;
 }
-.hero {
-  padding: 28px 30px 25px;
-  border: 1px solid var(--border);
-  background: linear-gradient(135deg, rgba(16,28,53,.96), rgba(18,11,31,.96));
-  box-shadow: 0 14px 44px rgba(0,0,0,.32);
-  margin-bottom: 34px;
-}
-.eyebrow {
-  color: var(--blue);
-  font-size: .78rem;
-  font-weight: 800;
-  letter-spacing: .16em;
-  margin-bottom: 4px;
-}
 h1 {
-  margin: 0;
+  margin: 0 0 10px;
   color: #fff;
-  font-size: 2.45rem;
-  letter-spacing: .01em;
-}
-h1 span {
-  color: var(--purple);
-  font-weight: 600;
-}
-.hero-line {
-  width: 170px;
-  height: 3px;
-  margin-top: 15px;
-  background: linear-gradient(90deg, var(--blue), var(--purple), var(--gold));
+  font-size: 2.3rem;
 }
 h2 {
   margin: 42px 0 18px;
@@ -71,7 +46,7 @@ h2 {
   border-left: 4px solid var(--blue);
   border-bottom: 1px solid rgba(183,133,255,.45);
   font-size: 1.35rem;
-  letter-spacing: .06em;
+  letter-spacing: .04em;
 }
 h3 {
   color: var(--purple);
@@ -84,20 +59,23 @@ h3 {
 h4 {
   color: var(--gold);
   font-size: 1rem;
-  margin: 18px 0 4px;
+  margin: 18px 0 6px;
   font-weight: 800;
 }
 p { margin: 9px 0 14px; }
-strong {
-  color: #fff;
-  font-weight: 750;
-}
-ul, ol {
-  padding-left: 1.65rem;
-  margin: 10px 0 18px;
-}
+strong { color: #fff; }
+a { color: var(--blue); }
+a:hover { text-decoration: underline; }
+ul, ol { padding-left: 1.65rem; margin: 10px 0 18px; }
 li { margin: 5px 0; }
 li::marker { color: var(--blue); }
+blockquote {
+  margin: 0 0 22px;
+  padding: 12px 16px;
+  border-left: 4px solid var(--purple);
+  background: rgba(17,24,44,.78);
+  color: var(--muted);
+}
 code {
   color: #d9c6ff;
   background: var(--code);
@@ -115,12 +93,19 @@ pre {
   overflow-x: auto;
   margin: 10px 0 18px;
 }
-pre code {
-  border: 0;
-  padding: 0;
-  background: transparent;
-  color: #d8e4ff;
+pre code { border: 0; padding: 0; background: transparent; color: #d8e4ff; }
+img {
+  display: block;
+  width: 100%;
+  max-width: 1044px;
+  height: auto;
+  margin: 0 auto;
+  border: 1px solid var(--border);
+  box-shadow: 0 12px 34px rgba(0,0,0,.35);
 }
+hr { border: 0; border-top: 1px solid rgba(183,133,255,.35); margin: 24px 0; }
+main > p[align="center"] { text-align: center; }
+main > p[align="center"] em { color: var(--muted); }
 footer {
   max-width: 980px;
   margin: 0 auto 35px;
@@ -131,51 +116,25 @@ footer {
 @media (max-width: 720px) {
   main { padding: 24px 20px 48px; }
   footer { padding: 0 20px; }
-  h1 { font-size: 2rem; }
+  h1 { font-size: 1.95rem; }
 }
-
-.readme-screenshot {
-  margin: 28px 0 34px;
-  text-align: center;
-}
-.readme-screenshot img {
-  display: block;
-  width: 100%;
-  max-width: 1044px;
-  height: auto;
-  margin: 0 auto;
-  border: 1px solid var(--border);
-  box-shadow: 0 12px 34px rgba(0,0,0,.35);
-}
-.readme-screenshot figcaption {
-  margin-top: 9px;
-  color: var(--muted);
-  font-size: .88rem;
-}
-.contents {
-  margin: 0 0 30px;
-  padding: 16px 20px;
-  background: rgba(13,18,34,.72);
-  border: 1px solid var(--border);
-}
-.contents h2 {
-  margin-top: 0;
-}
-.contents a {
-  color: var(--blue);
-  text-decoration: none;
-}
-.contents a:hover {
-  text-decoration: underline;
-}
-
 </style>
 </head>
 <body>
 <main>
-<header class="hero"><div class="eyebrow">PROJECT EBONHOLD ADDON</div><h1>Ebon Affix Alert <span>(<strong>EAA</strong>)</span></h1><div class="hero-line"></div></header><p><strong>Ebon Affix Alert</strong> a addon for <strong>Project Ebonhold</strong> that watches newly acquired gear for selected Ebonhold affixes and alerts you when something you care about drops.</p><p><strong>EAA</strong> is designed to make affix farming easier without requiring you to inspect every item manually - You choose the General affix ranks and Weapon affixes you want to track.</p><figure class="readme-screenshot"><img src="Media/EAA_Main_UI.png" alt="Ebon Affix Alert modern interface showing General affix tracking"><figcaption>Ebon Affix Alert — Modern interface</figcaption></figure>
-<nav class="contents">
-<h2>CONTENTS</h2>
+<h1>Ebon Affix Alert (<strong>EAA</strong>)</h1>
+<blockquote>
+<p>A World of Warcraft 3.3.5a addon for Project Ebonhold that watches newly acquired gear for selected Ebonhold affixes and alerts you when something you care about drops.</p>
+</blockquote>
+<p><strong>Ebon Affix Alert</strong> is an addon for <strong>Project Ebonhold</strong> that watches newly acquired gear for selected Ebonhold affixes and alerts you when something you care about drops.</p>
+<p><strong>EAA</strong> is designed to make affix farming easier without requiring you to inspect every item manually. You choose the General affix ranks and Weapon affixes you want to track, and <strong>EAA</strong> handles the rest.</p>
+<p align="center">
+  <img src="Media/EAA_Main_UI.png" alt="Ebon Affix Alert main interface showing General and Weapon affix tracking plus Extra Features" width="100%">
+</p>
+
+<p align="center"><em>Ebon Affix Alert — main interface</em></p>
+
+<h2>Contents</h2>
 <ul>
 <li><a href="#requirements">Requirements</a></li>
 <li><a href="#installation">Installation</a></li>
@@ -185,27 +144,233 @@ footer {
 <li><a href="#troubleshooting">Troubleshooting</a></li>
 <li><a href="#project--license">Project / License</a></li>
 </ul>
-</nav>
-<h2 id="requirements">REQUIREMENTS</h2><ul><li>World of Warcraft 3.3.5a client</li></ul><h2 id="installation">INSTALLATION</h2><ol><li>Extract the <strong>“EbonAffixAlert”</strong> folder into your WoW AddOns directory:</li></ol><pre><code>World of Warcraft\Interface\AddOns</code></pre><ol><li>Start the client or restart if already running</li><li>Make sure <strong>Ebon Affix Alert</strong> is enabled in the AddOns list at character selection</li><li>Log into <strong>Project Ebonhold</strong></li><li>Use <code>/eaa</code> or the minimap icon to open the main settings window</li></ol><h2 id="quick-start">QUICK START</h2><ol><li>Type <code>/eaa</code></li><li>On the General page, tick the ranks you want <strong>EAA</strong> to watch</li><li>On the Weapon page, tick the Weapon affixes you want to watch</li><li>Leave <strong>“Enable loot tracking”</strong> enabled</li><li>Optionally enable/disable the large on-screen alert, alert sound, minimap icon and <strong>Loot History</strong></li><li>Loot gear normally. <strong>EAA</strong> will alert only when a newly acquired item matches one of your tracked selections</li></ol><h2 id="features">FEATURES</h2><h3>Affix tracking</h3><ul><li>Separate General and Weapon affix pages</li><li>General affixes can be tracked rank-by-rank</li><li>Click a General rank Roman numeral to track every available General affix of that rank; click it again when the whole rank is selected to clear that rank</li><li>Each General row has an <strong>“All”</strong> control for selecting or clearing every available rank for that affix</li><li><strong>“Select All”</strong> selects every option on the currently displayed page</li><li><strong>“Clear All”</strong> clears all tracked affixes</li><li>Search/filter box for quickly finding an affix</li><li><strong>“Tracked only”</strong> filter for showing only your currently tracked affixes</li></ul><h3>Loot detection</h3><ul><li>Weapon source items are identified by an exact hardcoded source-weapon name lookup built from Project Ebonhold&#x27;s extractable-item list</li><li>Weapon loot detection does not scan item tooltips or compare proc text during normal play</li><li>The current source table covers all 194 researched extractable item IDs (192 unique displayed weapon names)</li></ul><h3>Bag highlighting</h3><ul><li>The default Blizzard bag UI can highlight items whose affix/rank you are currently tracking</li><li>Highlights use a static crystallised border tinted to the item&#x27;s normal quality colour: Uncommon green, Rare blue, Epic purple, Legendary orange</li><li>Poor/Common items are ignored</li><li>The feature is event-driven and does not use a continuous OnUpdate scan</li><li>Highlights refresh immediately when tracking selections change</li><li>Toggle it with <strong>Highlight tracked bag items</strong> in the main EAA settings window</li><li>Supports the default Blizzard bags, Bagnon 2.13.3, the tested WoTLK 3.3.5 AdiBags backport, and OneBag3 r131</li></ul>
+<h2>Requirements</h2>
+<ul>
+<li>World of Warcraft 3.3.5a client</li>
+<li>Project Ebonhold client with ExtractionService support</li>
+</ul>
+<h2>Installation</h2>
+<ol>
+<li>Extract the <strong>EbonAffixAlert</strong> folder into your WoW AddOns directory:</li>
+</ol>
+<pre><code class="language-text">World of Warcraft\Interface\AddOns
+</code></pre>
+<ol start="2">
+<li>Start the client, or restart it if already running.</li>
+<li>Make sure <strong>Ebon Affix Alert</strong> is enabled in the AddOns list at character selection.</li>
+<li>Log into <strong>Project Ebonhold</strong>.</li>
+<li>Use <code>/eaa</code> or the minimap icon to open the main settings window.</li>
+</ol>
+<h2>Quick Start</h2>
+<ol>
+<li>Type <code>/eaa</code>.</li>
+<li>On the <strong>General</strong> page, tick the ranks you want <strong>EAA</strong> to watch.</li>
+<li>On the <strong>Weapon</strong> page, tick the Weapon affixes you want to watch.</li>
+<li>Leave <strong>Enable loot tracking</strong> enabled.</li>
+<li>Optionally enable bag highlighting, <strong>Loot History</strong>, and <strong>Unknown Affix Mode</strong>.</li>
+<li>Loot gear normally. <strong>EAA</strong> will alert only when a newly acquired item matches one of your tracked selections.</li>
+</ol>
+<h2>Features</h2>
+<h3>Affix tracking</h3>
+<ul>
+<li>Separate <strong>General</strong> and <strong>Weapon</strong> affix pages.</li>
+<li>General affixes can be tracked rank-by-rank.</li>
+<li>Each General row has an <strong>All</strong> control for selecting or clearing every available rank for that affix.</li>
+<li>Clicking a Roman numeral rank header selects or clears that rank for every visible affix on the page.</li>
+<li><strong>Select All</strong> selects every option on the currently displayed page.</li>
+<li><strong>Clear All</strong> clears all tracked affixes.</li>
+<li>Search/filter box for quickly finding an affix.</li>
+<li><strong>Tracked only</strong> filter for showing only your currently tracked affixes.</li>
+</ul>
+<h3>Unknown Affix Mode</h3>
+<ul>
+<li>Optional <strong>Track unknown affixes</strong> mode automatically tracks General affix ranks and Weapon affixes that are not present in Project Ebonhold's learned-affix data.</li>
+<li>Manual tracked selections remain independent, so you can still manually track already-learned affixes at the same time.</li>
+<li>A help button beside <strong>Track unknown affixes</strong> opens a copyable list of the currently unknown General ranks and Weapon affixes.</li>
+<li>Hovering the checkbox shows a short explanation of what the feature does.</li>
+</ul>
+<h3>Loot detection</h3>
+<p><strong>EAA</strong> detects when you loot an item with a tracked affix and alerts you. Safeguards are included to reduce duplicate or false alerts.</p>
+<h3>Alerts</h3>
+<ul>
+<li>Optional large on-screen alert.</li>
+<li>Optional alert sound.</li>
+<li>General-affix alerts use the raid warning sound with a short anti-spam cooldown.</li>
+<li>Weapon-affix alerts use a distinct sound so they are immediately recognisable.</li>
+<li><code>/eaa alert</code> and <code>/eaa wepAlert</code> provide end-to-end test alerts using your current alert settings.</li>
+</ul>
+<h3>Bag highlighting</h3>
+<p>Tracked items can be highlighted directly in your bags with a rarity-coloured glow.</p>
+<ul>
+<li>Uses rarity-colour styling: uncommon = green, rare = blue, epic = purple, legendary = orange.</li>
+<li>Supports the default Blizzard bags.</li>
+<li>Also supports <strong>Bagnon 2.13.3</strong>, <strong>AdiBags</strong>, and <strong>OneBag3</strong>.</li>
+<li>Highlighting is event-driven with no continuous bag scanning.</li>
+</ul>
 <h3>EbonClearance integration</h3>
-<p>When <strong>EbonClearance</strong> is installed, bag items matching affixes tracked by <strong>EAA</strong> are automatically protected on EbonClearance's Keep List.</p>
+<p>When enabled, <strong>EAA</strong> can automatically protect tracked items in <strong>EbonClearance</strong>.</p>
 <ul>
-<li>EAA removes only the Keep entries it created when they are no longer needed by the current tracked-affix selection</li>
-<li>Existing manual or EbonClearance-managed Keep entries are left untouched</li>
-<li>The feature can be enabled or disabled with <strong>Auto-Keep tracked items in EbonClearance</strong> in the main EAA window</li>
-<li>The option tooltip explains EbonClearance's item-ID limitation when multiple copies of the same base item have different affixes</li>
+<li>Items in the player's bags with an affix currently tracked by <strong>EAA</strong> are automatically added to EbonClearance's <strong>Keep List</strong>.</li>
+<li>EAA-managed Keep entries are removed when they are no longer needed by the current tracked-affix selection.</li>
+<li>Existing manual or EbonClearance-managed Keep entries are left untouched.</li>
+<li>A hover tooltip explains how the feature works and notes the item-ID limitation.</li>
 </ul>
-<p><strong>EAA</strong> will detect when you loot an item with a tracked affix and alert you. Several safeguarding measure have been implemented to prevent false alerts.</p><h3>Alerts</h3><ul><li>Optional large on-screen alert</li><li>Optional alert sounds</li><li>General-affix alerts use the raid warning sound with a short anti-spam cooldown</li><li>Weapon-affix alerts use a distinct sound so they are immediately recognisable</li><li><code>/eaa alert</code> and <code>/eaa wepAlert</code> provide end-to-end test alerts using your current alert settings</li></ul><h3>Project Ebonhold integration</h3><p><code>/eaa weaponAffixes</code> exports Project Ebonhold Weapon-affix spell descriptions together with EAA&#x27;s hardcoded source-weapon names into a copyable window.</p><p>Where available, <strong>EAA</strong> uses <strong>Project Ebonhold</strong>&#x27;s ExtractionService.learnedAffixes data to obtain:</p><ul><li>canonical affix names</li><li>affix spell IDs</li><li>affix icons</li><li>weaponOnly information</li><li>currently published General-affix ranks</li></ul><h3>Affix tooltips</h3><p>Hovering over affixes in the settings window shows the spell tooltip.</p><ul><li>Hover the icon/name of a General affix for an affix tooltip</li><li>Hover an individual General rank checkbox for that specific rank&#x27;s spell tooltip</li><li>Hover a Weapon affix icon/name for its spell tooltip</li></ul><h3>Loot History</h3><p><strong>Loot History</strong> is an optional, movable and resizable window containing only items that actually triggered an <strong>EAA</strong> alert.</p><ul><li>Session-only by design; history is not permanently stored between logins</li><li>Stores up to 50 entries</li><li>Newest entries appear first</li><li>Displays the looted item, tracked affix and affix icon</li><li>Shift-click an entry to place its item link into chat</li><li>Right-click an entry to remove only that history entry</li><li>Hover an item entry for its normal item tooltip</li><li>Clear button removes the current session history</li><li>Optional Transparency mode makes only the <strong>Loot History</strong> background translucent while retaining readable text and controls</li></ul><h3>UI styles</h3><p><strong>EAA</strong> includes two UI styles selectable from the top-left of the main window:</p><h4>Modern</h4><p>A clean black/navy interface with blue accents and a compact modern layout.</p><h4>Fantasy</h4><p>A more Warcraft-inspired presentation with custom ornamental corners, an ornate title treatment, fantasy-styled buttons, rune-style checkboxes, ledger row treatments and a warmer fantasy colour palette.</p><p>The selected style is saved.</p><h3>Minimap button</h3><p>The minimap icon provides quick access to <strong>EAA</strong>:</p><ul><li>Left-click: open/close <strong>EAA</strong> settings</li><li>Right-click: toggle loot tracking</li><li>Ctrl + left-drag: move the minimap icon</li><li>Shift + left-click: hide the minimap icon</li></ul><p>The minimap tooltip also shows the current <strong>Loot History</strong> count. The icon can be restored from the main <strong>EAA</strong> settings window.</p>
+<h3>Project Ebonhold integration</h3>
+<p>Where available, <strong>EAA</strong> uses <strong>Project Ebonhold</strong>'s <code>ExtractionService.learnedAffixes</code> data to obtain:</p>
+<ul>
+<li>canonical affix names</li>
+<li>affix spell IDs</li>
+<li>affix icons</li>
+<li><code>weaponOnly</code> information</li>
+<li>currently published General-affix ranks</li>
+<li>learned vs unknown affix status for Unknown Affix Mode</li>
+</ul>
+<h3>Affix tooltips</h3>
+<p>Hovering over affixes in the settings window shows the spell tooltip.</p>
+<ul>
+<li>Hover the icon/name of a General affix for an affix tooltip.</li>
+<li>Hover an individual General rank checkbox for that specific rank's spell tooltip.</li>
+<li>Hover a Weapon affix icon/name for its spell tooltip.</li>
+</ul>
+<h3>Loot History</h3>
+<p><strong>Loot History</strong> is an optional, movable and resizable window containing only items that actually triggered an <strong>EAA</strong> alert.</p>
+<ul>
+<li>Session-only by design; history is not permanently stored between logins.</li>
+<li>Stores up to 50 entries.</li>
+<li>Newest entries appear first.</li>
+<li>Displays the looted item, tracked affix, and affix icon.</li>
+<li>Shift-click an entry to place its item link into chat.</li>
+<li>Right-click an entry to remove only that history entry.</li>
+<li>Hover an item entry for its normal item tooltip.</li>
+<li>Clear button removes the current session history.</li>
+<li>Optional Transparency mode makes only the <strong>Loot History</strong> background translucent while retaining readable text and controls.</li>
+</ul>
+<h3>UI styles and localization</h3>
+<p><strong>EAA</strong> includes two UI styles selectable from the top-left of the main window:</p>
+<h4>Modern</h4>
+<p>A clean black/navy interface with blue accents and a compact modern layout.</p>
+<h4>Fantasy</h4>
+<p>A more Warcraft-inspired presentation with ornamental corners, an ornate title treatment, fantasy-styled buttons, rune-style checkboxes, ledger row treatments, and a warmer fantasy colour palette.</p>
+<p>Additional interface options:</p>
+<ul>
+<li>Built-in language selector for <strong>English</strong>, <strong>French</strong>, <strong>German</strong>, and <strong>Spanish</strong>.</li>
+<li>Language selection changes EAA's own interface/help text only.</li>
+<li>Affix names, item names, and game-provided text remain unchanged.</li>
+<li>The selected style and language are saved.</li>
+</ul>
 <h3>Update checking</h3>
-<p><strong>EAA</strong> uses a hidden realm-wide <code>ebonaffixalert</code> chat channel to exchange installed versions with other EAA users. If a newer version is seen, EAA prints a one-time update notice with a clickable GitHub Releases link.</p>
+<p><strong>EAA</strong> includes a lightweight realm-side update checker.</p>
 <ul>
-<li><code>/eaa update</code> shows update-channel status</li>
-<li><code>/eaa updateTest</code> runs a channel echo test</li>
+<li>Runs automatically on login.</li>
+<li>Can be triggered manually with <code>/eaa update</code>.</li>
+<li>Also available from <strong>Interface → AddOns → EbonAffixAlert</strong>.</li>
+<li>Compares the installed addon version and the officially advertised release version.</li>
 </ul>
-<h3>Interface Options integration</h3><pre><code>Interface -&gt; AddOns -&gt; EbonAffixAlert</code></pre><p>This page provides:</p><ul><li>Master Enable EbonAffixAlert checkbox</li><li>Shortcuts to common commands</li><li>Export Tracked Config support tool</li><li>Diagnostics and troubleshooting controls</li></ul><h2 id="support-and-diagnostics">SUPPORT AND DIAGNOSTICS</h2><h3>Export Tracked Configuration</h3><p><strong>“Export Tracked Config”</strong> opens a selectable text window listing the exact General ranks and Weapon affixes you currently track. This is intended primarily for attaching your configuration to a bug report.</p><h3>Bug Report</h3><p><strong>“Bug Report”</strong> opens a selectable report containing useful troubleshooting information, including client/build information, <strong>EAA</strong> state, <strong>Project Ebonhold</strong>/ExtractionService state, cache/runtime counts, loaded addons and your tracked configuration.</p><p>Use Ctrl+A then Ctrl+C to copy the report.</p><h3>Performance monitor</h3><p><code>/eaa perf</code> toggles a periodic <strong>EAA</strong> performance report in chat. It reports <strong>EAA</strong> memory usage and cache/runtime sizes using WoW&#x27;s exposed addon APIs.</p><p>CPU usage is available only when WoW&#x27;s script profiling is enabled. To enable it:</p><pre><code>/console scriptProfile 1</code></pre><pre><code>/reload</code></pre><h3>Script errors</h3><p><code>/eaa scriptErrors</code> toggles WoW&#x27;s scriptErrors CVar. This is useful when reproducing a normal Lua error.</p><p>For protected-action/taint problems, WoW&#x27;s taint log can also be enabled manually:</p><pre><code>/console taintLog 2</code></pre><pre><code>/reload</code></pre><p>After reproducing the problem, inspect:</p><pre><code>World of Warcraft\Logs\taint.log</code></pre><h3>Status</h3><p><code>/eaa status</code> prints a one-time health summary including tracking state, tracked-selection count, <strong>Loot History</strong>, active alerts, ExtractionService availability, server catalogue count, cached icons and relevant diagnostic CVars.</p><h3>Icon rescan</h3><p><code>/eaa rescanIcons</code> asks <strong>Project Ebonhold</strong> for the current learned-affix catalogue again and refreshes <strong>EAA</strong>&#x27;s affix/icon cache.</p><h3>Clear cache</h3><p><code>/eaa clearCache</code> clears <strong>EAA</strong>&#x27;s disposable runtime/persisted icon data and the short-lived duplicate-alert cache, then automatically requests a fresh Ebonhold icon scan.</p><p>It intentionally preserves tracked selections, settings, <strong>Loot History</strong> and the bag ownership baseline.</p><h3>Debug</h3><p><code>/eaa debug</code> enables additional <strong>EAA</strong> event/loot diagnostics in chat. Leave this disabled during normal play unless troubleshooting a problem.</p><h2 id="troubleshooting">TROUBLESHOOTING</h2><h3>Addon does not appear</h3><ul><li>Confirm EbonAffixAlert.toc is directly inside Interface\AddOns\EbonAffixAlert.</li><li>Confirm the addon is enabled on the character-selection AddOns screen.</li><li>Confirm you are using a compatible 3.3.5a <strong>Project Ebonhold</strong> client.</li></ul><h3>No affix icons/tooltips</h3><p><strong>Project Ebonhold</strong>&#x27;s learned-affix catalogue may not have arrived yet. Try:</p><pre><code>/eaa rescanIcons</code></pre><p>If needed, use:</p><pre><code>/eaa status</code></pre><p>and check whether ExtractionService and learned-affix entries are available.</p><h3>Unexpected loot alerts</h3><p>Enable:</p><pre><code>/eaa debug</code></pre><p>Then reproduce the issue and include the relevant <strong>EAA</strong> chat output plus a Bug Report.</p><h3>Lua error popup</h3><p>Use:</p><pre><code>/eaa scriptErrors</code></pre><p>or:</p><pre><code>/console scriptErrors 1</code></pre><pre><code>/reload</code></pre><p>Then reproduce the problem and copy the complete error and stack trace.</p><h3>&quot;Interface action failed because of an AddOn&quot;</h3><p>This is usually a protected-action/taint issue rather than a normal Lua exception. Enable:</p><pre><code>/console taintLog 2</code></pre><pre><code>/reload</code></pre><p>Reproduce the problem, then provide <code>Logs\taint.log</code> along with an <strong>EAA</strong> Bug Report.</p><h2 id="project--license">PROJECT / LICENSE</h2><p><strong>Ebon Affix Alert</strong> is an independent addon intended for use with <strong>Project Ebonhold</strong>. <strong>Project Ebonhold</strong> and World of Warcraft are separate projects/products and are not distributed with <strong>EAA</strong>.</p><p><strong>Ebon Affix Alert</strong> is open source and distributed under the MIT License. See LICENSE.txt for the full license text.</p><p>The MIT License permits use, copying, modification, merging, publishing, distribution, sublicensing and/or sale of copies of the software, subject to retaining the copyright and license notice.</p><p>See CHANGELOG.txt for version-specific changes.</p>
+<h3>Minimap button</h3>
+<p>The minimap icon provides quick access to <strong>EAA</strong>:</p>
+<ul>
+<li>Left-click: open/close <strong>EAA</strong> settings.</li>
+<li>Right-click: toggle loot tracking.</li>
+<li>Ctrl + left-drag: move the minimap icon.</li>
+<li>Shift + left-click: hide the minimap icon.</li>
+</ul>
+<p>The minimap tooltip also shows the current <strong>Loot History</strong> count. The icon can be restored from the main <strong>EAA</strong> settings window.</p>
+<h3>Interface Options integration</h3>
+<pre><code class="language-text">Interface -&gt; AddOns -&gt; EbonAffixAlert
+</code></pre>
+<p>This page provides:</p>
+<ul>
+<li>Master enable checkbox.</li>
+<li>Quick command buttons.</li>
+<li>Export tracked configuration support tool.</li>
+<li>Bug report support tool.</li>
+<li>Diagnostics and troubleshooting controls.</li>
+<li>Manual update-check button.</li>
+</ul>
+<h2>Support and Diagnostics</h2>
+<h3>Export Tracked Configuration</h3>
+<p><strong>Export Tracked Config</strong> opens a selectable text window listing the exact General ranks and Weapon affixes you currently track. This is intended primarily for attaching your configuration to a bug report.</p>
+<h3>Bug Report</h3>
+<p><strong>Bug Report</strong> opens a selectable report containing useful troubleshooting information, including client/build information, <strong>EAA</strong> state, <strong>Project Ebonhold</strong> / ExtractionService state, cache/runtime counts, loaded addons, and your tracked configuration.</p>
+<p>Use <strong>Ctrl+A</strong> then <strong>Ctrl+C</strong> to copy the report.</p>
+<h3>Status</h3>
+<p><code>/eaa status</code> prints a one-time health summary including tracking state, tracked-selection count, <strong>Loot History</strong>, active alerts, ExtractionService availability, server catalogue count, cached icons, and relevant diagnostic CVars.</p>
+<h3>Update checker</h3>
+<ul>
+<li><code>/eaa update</code> manually checks the realm for a newer <strong>EAA</strong> version.</li>
+<li><code>/eaa updateDebug</code> toggles verbose update-check diagnostics in chat.</li>
+</ul>
+<h3>Unknown Affix diagnostics</h3>
+<p><code>/eaa unknowntrack</code> toggles temporary debug output showing which affixes are being automatically tracked by <strong>Unknown Affix Mode</strong>.</p>
+<h3>Icon rescan</h3>
+<p><code>/eaa rescanIcons</code> asks <strong>Project Ebonhold</strong> for the current learned-affix catalogue again and refreshes <strong>EAA</strong>'s affix/icon cache.</p>
+<h3>Clear cache</h3>
+<p><code>/eaa clearCache</code> clears <strong>EAA</strong>'s disposable runtime/persisted icon data and the short-lived duplicate-alert cache, then automatically requests a fresh Ebonhold icon scan.</p>
+<p>It intentionally preserves tracked selections, settings, <strong>Loot History</strong>, and the bag ownership baseline.</p>
+<h3>Performance monitor</h3>
+<p><code>/eaa perf</code> toggles a periodic <strong>EAA</strong> performance report in chat. It reports <strong>EAA</strong> memory usage and cache/runtime sizes using WoW's exposed addon APIs.</p>
+<p>CPU usage is available only when WoW's script profiling is enabled. To enable it:</p>
+<pre><code class="language-text">/console scriptProfile 1
+/reload
+</code></pre>
+<h3>Script errors</h3>
+<p><code>/eaa scriptErrors</code> toggles WoW's <code>scriptErrors</code> CVar. This is useful when reproducing a normal Lua error.</p>
+<p>For protected-action / taint problems, WoW's taint log can also be enabled manually:</p>
+<pre><code class="language-text">/console taintLog 2
+/reload
+</code></pre>
+<p>After reproducing the problem, inspect:</p>
+<pre><code class="language-text">World of Warcraft\Logs	aint.log
+</code></pre>
+<h3>Debug</h3>
+<p><code>/eaa debug</code> enables additional <strong>EAA</strong> event/loot diagnostics in chat. Leave this disabled during normal play unless troubleshooting a problem.</p>
+<h2>Troubleshooting</h2>
+<h3>Addon does not appear</h3>
+<ul>
+<li>Confirm <code>EbonAffixAlert.toc</code> is directly inside <code>Interface\AddOns\EbonAffixAlert</code>.</li>
+<li>Confirm the addon is enabled on the character-selection AddOns screen.</li>
+<li>Confirm you are using a compatible 3.3.5a <strong>Project Ebonhold</strong> client.</li>
+</ul>
+<h3>No affix icons / tooltips</h3>
+<p>Project Ebonhold's learned-affix catalogue may not have arrived yet. Try:</p>
+<pre><code class="language-text">/eaa rescanIcons
+</code></pre>
+<p>If needed, use:</p>
+<pre><code class="language-text">/eaa status
+</code></pre>
+<p>and check whether ExtractionService and learned-affix entries are available.</p>
+<h3>Unknown Affix Mode shows nothing</h3>
+<p>If <strong>Unknown Affix Mode</strong> appears empty when it should not be, use:</p>
+<pre><code class="language-text">/eaa unknowntrack
+</code></pre>
+<p>Then toggle the feature and review the resulting debug output together with <code>/eaa status</code>.</p>
+<h3>Unexpected loot alerts</h3>
+<p>Enable:</p>
+<pre><code class="language-text">/eaa debug
+</code></pre>
+<p>Then reproduce the issue and include the relevant <strong>EAA</strong> chat output plus a Bug Report.</p>
+<h3>Lua error popup</h3>
+<p>Use:</p>
+<pre><code class="language-text">/eaa scriptErrors
+</code></pre>
+<p>or:</p>
+<pre><code class="language-text">/console scriptErrors 1
+/reload
+</code></pre>
+<p>Then reproduce the problem and copy the complete error and stack trace.</p>
+<h3>&quot;Interface action failed because of an AddOn&quot;</h3>
+<p>This is usually a protected-action / taint issue rather than a normal Lua exception. Enable:</p>
+<pre><code class="language-text">/console taintLog 2
+/reload
+</code></pre>
+<p>Reproduce the problem, then provide <code>Logs	aint.log</code> along with an <strong>EAA</strong> Bug Report.</p>
+<h2>Project / License</h2>
+<p><strong>Ebon Affix Alert</strong> is an independent addon intended for use with <strong>Project Ebonhold</strong>. <strong>Project Ebonhold</strong> and World of Warcraft are separate projects/products and are not distributed with <strong>EAA</strong>.</p>
+<p><strong>Ebon Affix Alert</strong> is open source and distributed under the MIT License. See <code>LICENSE.txt</code> for the full license text.</p>
+<p>The MIT License permits use, copying, modification, merging, publishing, distribution, sublicensing, and/or sale of copies of the software, subject to retaining the copyright and license notice.</p>
+<p>See <code>CHANGELOG.txt</code> for version-specific changes.</p>
+
 </main>
-<footer>
-  Ebon Affix Alert README &middot; Open source under the MIT License
-</footer>
+<footer>Ebon Affix Alert README &middot; Open source under the MIT License</footer>
 </body>
 </html>
